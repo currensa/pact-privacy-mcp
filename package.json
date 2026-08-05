@@ -1,0 +1,46 @@
+{
+  "name": "pact-privacy-mcp",
+  "version": "0.1.0",
+  "description": "A minimal Model Context Protocol server for Pact privacy workflows.",
+  "type": "module",
+  "bin": {
+    "pact-privacy-mcp": "./dist/src/index.js",
+    "pactpay": "./dist/src/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cli": "tsx src/cli/index.ts",
+    "init": "tsx src/cli/index.ts init",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/src/index.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "circomlibjs": "^0.1.7",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "ethers": "^6.17.0",
+    "snarkjs": "^0.7.6",
+    "tronweb": "^6.4.0",
+    "tweetnacl": "^1.0.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "26.1.2",
+    "tsx": "4.20.6",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "tronweb": {
+      "ethers": "6.17.0"
+    },
+    "underscore": "1.13.8",
+    "ws": "8.21.0"
+  }
+}
