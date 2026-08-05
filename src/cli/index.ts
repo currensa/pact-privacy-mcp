@@ -8,11 +8,14 @@ import { PactPrivacyBackend } from "../backend/client.js";
 import { LocalSigner } from "../wallet/local-signer.js";
 import { OnboardingService } from "./onboarding.js";
 import { TerminalPrompter } from "./prompts.js";
+import { registerWorkflowCommands } from "./commands.js";
+import { createCliExecutor } from "./executor.js";
 
 const program = new Command()
   .name("pactpay")
   .description("Local Pact Privacy CLI")
-  .version("0.1.0");
+  .version("0.1.0")
+  .option("--env <path>", "protected environment file", ".env");
 
 program.command("init")
   .description("Initialize a walletless Pact Privacy account securely")
@@ -83,6 +86,8 @@ program.command("rotate-api-key")
     await writeEnvironment(path, { ...env, apiKey: rotated.key }, { replace: true });
     process.stderr.write("API key rotated and secure environment updated.\n");
   });
+
+registerWorkflowCommands(program, createCliExecutor(new TerminalPrompter()));
 
 program.parseAsync().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);

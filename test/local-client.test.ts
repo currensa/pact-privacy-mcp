@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { canonicalFromTronAddress, tronBase58FromCanonical } from "../src/chain/address.js";
+import { closeChainRuntime, createChainRuntime } from "../src/chain/runtime.js";
 import { loadEnvironment, writeEnvironment } from "../src/config/env.js";
 import { buildAccountRegistration, decryptOwnSecret, deriveEncryptionKeyPair } from "../src/crypto/account.js";
 import { LocalSigner } from "../src/wallet/local-signer.js";
@@ -19,6 +20,24 @@ test("one private key derives the same canonical EVM and TRON account", () => {
   assert.equal(signer.address("tron"), signer.address("evm"));
   assert.equal(canonicalFromTronAddress(signer.displayAddress("tron")), signer.address("tron"));
   assert.equal(tronBase58FromCanonical(signer.address("tron")), signer.displayAddress("tron"));
+});
+
+test("closing an EVM runtime destroys its JSON-RPC provider", () => {
+  const signer = new LocalSigner(PRIVATE_KEY);
+  const runtime = createChainRuntime({
+    chainId: 1,
+    family: "evm",
+    chainName: "Test",
+    rpcUrls: ["http://127.0.0.1:1"],
+    gravArc: "0x0000000000000000000000000000000000000001",
+    erc20Tokens: [],
+    defiProtocols: [],
+  }, signer);
+  assert.equal(runtime.family, "evm");
+  if (runtime.family !== "evm") throw new Error("Expected EVM runtime");
+  assert.equal(runtime.provider.destroyed, false);
+  closeChainRuntime(runtime);
+  assert.equal(runtime.provider.destroyed, true);
 });
 
 test("account encryption is deterministic by family and decrypts locally", async () => {

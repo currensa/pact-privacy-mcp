@@ -93,6 +93,10 @@ pactpay allocation list --chain 11142220
 pactpay allocation list --chain 3448148188 --unwithdrawn
 ```
 
+`deposit list` queries the backend and shows only deposits that have already
+been submitted and indexed. It does not show locally prepared operations; use
+`operation list` or `operation status <operation-id>` for those.
+
 ## Basic Web3 operations
 
 Approve a configured fungible token after interactive confirmation:
@@ -139,9 +143,13 @@ pactpay deposit prepare --chain 3448148188 --token USDT \
 Review and explicitly execute the prepared operation:
 
 ```bash
+pactpay operation list
 pactpay operation status op_01J...
 pactpay deposit execute op_01J... --confirm
 ```
+
+The preparation remains a local operation until execution succeeds and the
+backend indexes it. Only then does it appear in `deposit list`.
 
 Execution generates the proof and ciphertext locally, approves when the plan
 requires it, submits the deposit, waits for indexing, and delivers retry-safe

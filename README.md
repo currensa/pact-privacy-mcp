@@ -49,6 +49,10 @@ Runtime tools choose `chainId` per operation and infer EVM/TRON from backend
 configuration. A configured API key is checked for a matching
 `(address, family)` grant before a chain runtime is created.
 
+## CLI
+
+Learn [CLI Doc](./command.md) to use the full CLIs.
+
 ## Connect from Codex
 
 Build the project and register its absolute entry-point path:

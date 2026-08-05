@@ -26,3 +26,22 @@ export type AccountRecord = {
   encryptedSecret: string | null;
   encPubkey: string | null;
 };
+
+export type RegisteredReceiver = {
+  address: string;
+  secretHash: string;
+  encPubkey: string;
+};
+
+export type DepositionRecord = {
+  leaf_index: number;
+  address: string;
+  chain_id: string;
+  enc_content: string | null;
+  can_refund: 0 | 1;
+  is_refunded: boolean | 0 | 1;
+  deposit_info: string | null;
+  message_count: number;
+};
+
+export type EncryptedAllocation = { id: number; content: string };

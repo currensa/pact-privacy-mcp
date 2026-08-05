@@ -1,4 +1,12 @@
-import type { AccountRecord, ChainDetails, ChainFamily, ChainSummary } from "../core/types.js";
+import type {
+  AccountRecord,
+  ChainDetails,
+  ChainFamily,
+  ChainSummary,
+  DepositionRecord,
+  EncryptedAllocation,
+  RegisteredReceiver,
+} from "../core/types.js";
 import type { ApiKeyCreated, ApiKeyIdentity } from "../api-keys/types.js";
 import { apiKeyCreatePayloadHash, apiKeyManagePayloadHash, type ApiKeyAction } from "../api-keys/authorization.js";
 import { normalizeAddress } from "../chain/address.js";
@@ -83,8 +91,55 @@ export class PactPrivacyBackend {
     }
   }
 
-  account(): Promise<AccountRecord> {
-    return this.request<AccountRecord>("/user", { authenticated: true });
+  account(family?: ChainFamily): Promise<AccountRecord> {
+    const query = family ? `?family=${encodeURIComponent(family)}` : "";
+    return this.request<AccountRecord>(`/user${query}`, { authenticated: true });
+  }
+
+  users(family: ChainFamily): Promise<RegisteredReceiver[]> {
+    return this.request<RegisteredReceiver[]>(`/users?family=${encodeURIComponent(family)}`);
+  }
+
+  depositions(chainId: number): Promise<DepositionRecord[]> {
+    return this.request<DepositionRecord[]>(`/depositions?chainId=${encodeURIComponent(String(chainId))}`);
+  }
+
+  messages(chainId: number): Promise<EncryptedAllocation[]> {
+    return this.request<EncryptedAllocation[]>(`/messages?chainId=${encodeURIComponent(String(chainId))}`);
+  }
+
+  depositPath(chainId: number): Promise<{ siblings: string[]; nextIndex: number }> {
+    return this.request<{ siblings: string[]; nextIndex: number }>(`/deposit-path?chainId=${encodeURIComponent(String(chainId))}`);
+  }
+
+  saveDeposition(input: {
+    leafIndex: number;
+    chainId: number;
+    blockNumber: number;
+    encContent: string | null;
+    canRefund: 0 | 1;
+    isRefunded: false;
+    depositInfo: string;
+  }): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>("/depositions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+
+  saveMessage(input: {
+    address: string;
+    content: string;
+    chainId: number;
+    leafIndex: number;
+    secretHash: string;
+    encPubkey: string;
+    clientMessageId: string;
+  }): Promise<{ ok: true; id: number }> {
+    return this.request<{ ok: true; id: number }>("/messages", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   }
 
   async createAccount(

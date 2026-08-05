@@ -7,6 +7,10 @@ export type EvmRuntime = { family: "evm"; provider: JsonRpcProvider; wallet: Wal
 export type TronRuntime = { family: "tron"; tronWeb: TronWeb };
 export type ChainRuntime = EvmRuntime | TronRuntime;
 
+export function closeChainRuntime(runtime: ChainRuntime): void {
+  if (runtime.family === "evm") runtime.provider.destroy();
+}
+
 export function createChainRuntime(
   chain: ChainDetails,
   signer: LocalSigner,
