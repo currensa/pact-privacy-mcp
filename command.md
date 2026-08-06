@@ -50,8 +50,6 @@ Private workflows use an immutable preparation followed by explicit execution:
 | `withdraw execute` | Refresh claimed state and membership data, generate the proof locally, and submit the withdrawal. | Available |
 | `refund prepare` | Select an owned refundable deposit and calculate its current refundable result. | Planned |
 | `refund execute` | Generate and submit the refund proof, then update the backend after confirmation. | Planned |
-| `defi prepare` | Quote and prepare an EVM-only DeFi withdrawal, optionally with a private redeposit. | Planned |
-| `defi execute` | Revalidate the quote, prove and execute the EVM DeFi workflow. | Planned |
 
 | Recovery command | Description |
 | --- | --- |
@@ -77,11 +75,11 @@ Discovery and basic Web3 parameters:
 
 | Parameter | Used by | Meaning |
 | --- | --- | --- |
-| `--token <token>` | Token, balance, allowance, deposit, transfer, and DeFi commands | Configured token symbol or token contract address. `balance get` also accepts `native`. |
+| `--token <token>` | Token, balance, allowance, deposit, and transfer commands | Configured token symbol or token contract address. `balance get` also accepts `native`. |
 | `--address <address>` | Receiver, balance, and allowance commands | Address to filter or inspect. Balance and allowance commands default to the local signer. |
 | `--spender <spender>` | Allowance and approval commands | Configured spender name such as `gravarc`, or a contract address. |
-| `--amount <amount>` | Approval, transfer, withdraw, and DeFi commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
-| `--to <address>` | Transfer and DeFi commands | Public recipient address in the selected chain family. |
+| `--amount <amount>` | Approval, transfer, and withdraw commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
+| `--to <address>` | Transfer commands | Public recipient address in the selected chain family. |
 | `--hash <hash>` | `transaction status` | EVM transaction hash or TRON transaction ID. |
 | `--leaf-index <index>` | `deposit list`, `refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
 | `--unwithdrawn` | `allocation list` | Return only allocations with a positive remaining amount that have not been refunded. |
@@ -90,21 +88,12 @@ Private-workflow parameters:
 
 | Parameter | Used by | Meaning |
 | --- | --- | --- |
-| `--receiver <address:amount>` | `deposit prepare`, `defi prepare` | One registered receiver and human-readable amount. Repeat the option for multiple receivers. |
+| `--receiver <address:amount>` | `deposit prepare` | One registered receiver and human-readable amount. Repeat the option for multiple receivers. |
 | `--receivers <csv-path>` | `deposit prepare` | Payroll CSV containing `address,amount` columns; rows are combined with repeated `--receiver` options. |
 | `--refund` | Deposit and private-redeposit preparation | Include encrypted depositor data required for a later refund. It does not execute a refund. |
-| `--allocation <id>` | `withdraw prepare`, `defi prepare` | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
+| `--allocation <id>` | `withdraw prepare` | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
 | `--all` | `withdraw prepare` | Withdraw the allocation's full current remaining amount. It cannot be combined with `--amount`. |
 | `<operation-id>` | Execute, status, cancel, and resume commands | Local durable ID returned by a preparation, such as `op_01J...`. It is not a transaction hash. |
-
-EVM-only DeFi parameters:
-
-| Parameter | Meaning |
-| --- | --- |
-| `--protocol <protocol>` | Configured DeFi protocol used to quote and execute the withdrawal. |
-| `--output-token <token>` | Requested output-token symbol or contract address. |
-| `--min-output <amount>` | Minimum acceptable human-readable output amount after slippage. |
-| `--private-redeposit` | Privately deposit the DeFi output instead of sending it only to a public recipient. |
 
 Recovery filtering:
 
@@ -279,29 +268,6 @@ Preparation obtains all related withdrawal state. Execution decrypts refund
 data and proves locally, submits the refund, and updates the backend only after
 the transaction is confirmed. The same commands apply to TRON chains.
 
-## DeFi withdrawal
-
-DeFi is EVM-only. Preparation quotes the protocol call and can distribute the
-output publicly or privately redeposit it:
-
-```bash
-pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
-  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
-  --to 0xReceiver...
-```
-
-Private redeposit supports one or many registered receivers:
-
-```bash
-pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
-  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
-  --receiver 0xAlice...:60.00 --receiver 0xBob...:39.00 \
-  --private-redeposit --refund
-pactpay defi execute op_01J... --confirm
-```
-
-Attempting `defi prepare` on TRON must fail before quoting or proof generation.
-
 ## Recovery
 
 Every prepared operation has durable, non-secret state. Check progress after a
@@ -323,12 +289,16 @@ must be reconciled with `status` or `resume`.
 `resume` must reconcile every known transaction hash before retrying and must
 never repeat a fund-moving transaction whose outcome is unknown.
 
-## Future relayed workflows
+## Future work
 
-These workflows are not implemented. The existing direct commands continue to
-sign and submit transactions with the local private key.
+The commands in this section are designs only and are not implemented.
 
-### Relayed withdrawal
+### Milestone 1: Relayed withdrawal and refund
+
+The existing direct deposit, withdrawal, and refund commands continue to sign
+and submit transactions with the local private key.
+
+#### Relayed withdrawal
 
 ```bash
 pactpay relayed-withdraw prepare --chain 11142220 --allocation 735 \
@@ -343,7 +313,7 @@ pactpay relayed-withdraw status op_01J...
 the contract minimum. The proof must bind the recipient, quoted relayer
 address, and accepted fee.
 
-### Relayed refund
+#### Relayed refund
 
 ```bash
 pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
@@ -357,7 +327,28 @@ The proof must bind the public refunder address, quoted relayer address, and
 fee. Execution must refresh every related claimed and refunded state before
 generating the proof.
 
-### Relayed DeFi
+### Milestone 2: DeFi and relayed DeFi
+
+DeFi will be EVM-only. Preparation will quote the protocol call and support a
+public output or a private redeposit:
+
+```bash
+pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
+  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
+  --to 0xReceiver...
+
+pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
+  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
+  --receiver 0xAlice...:60.00 --receiver 0xBob...:39.00 \
+  --private-redeposit --refund
+pactpay defi execute op_01J... --confirm
+```
+
+Its additional parameters will be `--protocol`, `--output-token`,
+`--min-output`, and `--private-redeposit`. Attempting it on TRON must fail
+before quoting or proof generation.
+
+#### Relayed DeFi
 
 Relayed DeFi remains EVM-only and keeps the normal DeFi routing parameters:
 
@@ -373,7 +364,7 @@ Here `--fee` is the transaction relayer compensation included in the committed
 DeFi router data. Private redeposit should also support the normal repeatable
 `--receiver`, `--private-redeposit`, and `--refund` options.
 
-For all three workflows, preparation should obtain a short-lived quote with the
+For all three relayed workflows, preparation should obtain a short-lived quote with the
 relayer's submitting address, fee, expiry, and supported chain. Execution should
 refresh mutable state, generate the proof locally, and send only the proof and
 public operation parameters to the relayer. The relayer must verify the proof
