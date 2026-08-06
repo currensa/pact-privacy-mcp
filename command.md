@@ -17,6 +17,101 @@ explicit confirmation, revalidates mutable state, generates fresh proofs, and
 submits the reviewed plan. The persisted operation ID also allows safe recovery
 without accidentally repeating a transaction after a timeout.
 
+## Command reference
+
+The tables below describe the purpose of each command. Detailed examples follow.
+
+| Command | Description |
+| --- | --- |
+| `init` | Interactively generate or import a wallet, initialize account encryption data, obtain an API key, and write a protected `.env`. |
+| `status` | Check local configuration, backend connectivity, account initialization, and API-key grants without displaying credentials. |
+| `rotate-api-key` | Revoke and replace the API key stored in the local environment file. |
+| `chain list` | List supported chains and their EVM or TRON family. |
+| `token list` | List configured tokens for one chain. |
+| `receiver list` | Find registered recipients whose public account data can receive private deposits. |
+| `address show` | Display the EVM or TRON addresses derived from the configured private key. |
+| `balance list` | Show native and configured-token balances for an address. |
+| `balance get` | Read one native or token balance. |
+| `allowance get` | Read an ERC-20 or TRC-20 allowance. |
+| `transaction status` | Check whether a transaction is pending, confirmed, failed, or unavailable. |
+| `deposit list` | List deposits already submitted and indexed for the local account; this does not list prepared operations. |
+| `allocation list` | Decrypt and list incoming receiver allocations. An allocation ID identifies one encrypted receiver message and is used by withdrawal commands. |
+| `token approve` | Approve a configured contract to spend a token after confirmation. |
+| `transfer native` | Transfer the chain's native currency after confirmation. |
+| `transfer token` | Transfer an ERC-20 or TRC-20 token after confirmation. |
+
+Private workflows use an immutable preparation followed by explicit execution:
+
+| Command | Description | Availability |
+| --- | --- | --- |
+| `deposit prepare` | Validate recipients, amounts, balances, allowance, circuit tier, and optional refund support without moving funds. | Available |
+| `deposit execute` | Revalidate the plan, generate the proof and ciphertext locally, submit transactions, and deliver indexed backend records. | Available |
+| `withdraw prepare` | Select and decrypt one allocation, validate its remaining on-chain amount, and prepare a partial or full withdrawal. | Available |
+| `withdraw execute` | Refresh claimed state and membership data, generate the proof locally, and submit the withdrawal. | Available |
+| `refund prepare` | Select an owned refundable deposit and calculate its current refundable result. | Planned |
+| `refund execute` | Generate and submit the refund proof, then update the backend after confirmation. | Planned |
+| `defi prepare` | Quote and prepare an EVM-only DeFi withdrawal, optionally with a private redeposit. | Planned |
+| `defi execute` | Revalidate the quote, prove and execute the EVM DeFi workflow. | Planned |
+
+| Recovery command | Description |
+| --- | --- |
+| `operation list` | List locally persisted preparations and executions, optionally only incomplete ones. |
+| `operation status` | Display the immutable plan, progress stage, and safe transaction metadata for one operation. |
+| `operation cancel` | Cancel a preparation only before any transaction has been registered. |
+| `operation resume` | Reconcile known transaction hashes and safely continue an interrupted operation without blindly repeating a payment. |
+
+## Parameter reference
+
+Common and administrative parameters:
+
+| Parameter | Used by | Meaning |
+| --- | --- | --- |
+| `--env <path>` | Most commands | Protected environment file to read or update. Defaults to `./.env`. |
+| `--chain <chain-id>` | Chain-specific commands | Numeric chain ID from `chain list`, such as `11142220`; it is not a family or network name. |
+| `--family <family>` | `init`, `receiver list`, `address show` | `evm` or `tron`; `init` also accepts `both`. |
+| `--backend <url>` | `init` | Pact Privacy backend API URL written to the environment file. |
+| `--replace` | `init` | Permit replacement of existing managed account configuration after confirmation. |
+| `--confirm` | Write and execute commands | Skip the interactive confirmation. Validation and transaction-safety checks still run. |
+
+Discovery and basic Web3 parameters:
+
+| Parameter | Used by | Meaning |
+| --- | --- | --- |
+| `--token <token>` | Token, balance, allowance, deposit, transfer, and DeFi commands | Configured token symbol or token contract address. `balance get` also accepts `native`. |
+| `--address <address>` | Receiver, balance, and allowance commands | Address to filter or inspect. Balance and allowance commands default to the local signer. |
+| `--spender <spender>` | Allowance and approval commands | Configured spender name such as `gravarc`, or a contract address. |
+| `--amount <amount>` | Approval, transfer, withdraw, and DeFi commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
+| `--to <address>` | Transfer and DeFi commands | Public recipient address in the selected chain family. |
+| `--hash <hash>` | `transaction status` | EVM transaction hash or TRON transaction ID. |
+| `--leaf-index <index>` | `deposit list`, `refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
+| `--unwithdrawn` | `allocation list` | Return only allocations with a positive remaining amount that have not been refunded. |
+
+Private-workflow parameters:
+
+| Parameter | Used by | Meaning |
+| --- | --- | --- |
+| `--receiver <address:amount>` | `deposit prepare`, `defi prepare` | One registered receiver and human-readable amount. Repeat the option for multiple receivers. |
+| `--receivers <csv-path>` | `deposit prepare` | Payroll CSV containing `address,amount` columns; rows are combined with repeated `--receiver` options. |
+| `--refund` | Deposit and private-redeposit preparation | Include encrypted depositor data required for a later refund. It does not execute a refund. |
+| `--allocation <id>` | `withdraw prepare`, `defi prepare` | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
+| `--all` | `withdraw prepare` | Withdraw the allocation's full current remaining amount. It cannot be combined with `--amount`. |
+| `<operation-id>` | Execute, status, cancel, and resume commands | Local durable ID returned by a preparation, such as `op_01J...`. It is not a transaction hash. |
+
+EVM-only DeFi parameters:
+
+| Parameter | Meaning |
+| --- | --- |
+| `--protocol <protocol>` | Configured DeFi protocol used to quote and execute the withdrawal. |
+| `--output-token <token>` | Requested output-token symbol or contract address. |
+| `--min-output <amount>` | Minimum acceptable human-readable output amount after slippage. |
+| `--private-redeposit` | Privately deposit the DeFi output instead of sending it only to a public recipient. |
+
+Recovery filtering:
+
+| Parameter | Meaning |
+| --- | --- |
+| `--incomplete` | Limit `operation list` to operations that still require execution or reconciliation. |
+
 ## Completed commands
 
 Initialize an EVM and TRON account, create an API key, and write a protected
@@ -227,3 +322,61 @@ must be reconciled with `status` or `resume`.
 
 `resume` must reconcile every known transaction hash before retrying and must
 never repeat a fund-moving transaction whose outcome is unknown.
+
+## Future relayed workflows
+
+These workflows are not implemented. The existing direct commands continue to
+sign and submit transactions with the local private key.
+
+### Relayed withdrawal
+
+```bash
+pactpay relayed-withdraw prepare --chain 11142220 --allocation 735 \
+  --amount 250.00 --recipient 0xReceiver... --fee 0.25 \
+  --relayer https://relayer.example
+pactpay relayed-withdraw execute op_01J... --confirm
+pactpay relayed-withdraw status op_01J...
+```
+
+`--recipient` is the public address receiving the withdrawal after the fee.
+`--fee` is a human-readable token amount paid to the relayer and must satisfy
+the contract minimum. The proof must bind the recipient, quoted relayer
+address, and accepted fee.
+
+### Relayed refund
+
+```bash
+pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
+  --refunder 0xDepositor... --fee 0.50 \
+  --relayer https://relayer.example
+pactpay relayed-refund execute op_01J... --confirm
+pactpay relayed-refund status op_01J...
+```
+
+The proof must bind the public refunder address, quoted relayer address, and
+fee. Execution must refresh every related claimed and refunded state before
+generating the proof.
+
+### Relayed DeFi
+
+Relayed DeFi remains EVM-only and keeps the normal DeFi routing parameters:
+
+```bash
+pactpay relayed-defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
+  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
+  --to 0xReceiver... --fee 0.25 --relayer https://relayer.example
+pactpay relayed-defi execute op_01J... --confirm
+pactpay relayed-defi status op_01J...
+```
+
+Here `--fee` is the transaction relayer compensation included in the committed
+DeFi router data. Private redeposit should also support the normal repeatable
+`--receiver`, `--private-redeposit`, and `--refund` options.
+
+For all three workflows, preparation should obtain a short-lived quote with the
+relayer's submitting address, fee, expiry, and supported chain. Execution should
+refresh mutable state, generate the proof locally, and send only the proof and
+public operation parameters to the relayer. The relayer must verify the proof
+and quote, sign and submit the transaction, and return its hash. Account secrets,
+nullifiers, private keys, and proof witnesses must never be sent. Durable status,
+quote expiry, and idempotency must prevent stale or duplicate submission.

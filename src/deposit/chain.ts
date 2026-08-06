@@ -4,7 +4,7 @@ import { tronBase58FromCanonical } from "../chain/address.js";
 import type { ChainDetails } from "../core/types.js";
 import type { ChainRuntime } from "../chain/runtime.js";
 import { FUNGIBLE_TOKEN_ABI } from "../web3/abi.js";
-import { GRAVARC_DEPOSIT_ABI } from "./abi.js";
+import { GRAVARC_DEPOSIT_ABI, GRAVARC_WITHDRAW_ABI } from "./abi.js";
 import type { DepositProofResult, DepositPlan } from "./types.js";
 import type { StoredSignedTransaction } from "./payload-store.js";
 
@@ -123,6 +123,52 @@ export class DepositChainGateway {
     );
     const hash = String((raw as Record<string, unknown>).txID ?? "");
     return { purpose: "deposit", family: "tron", hash, raw };
+  }
+
+  async signWithdraw(argument: {
+    pA: [string, string];
+    pB: [[string, string], [string, string]];
+    pC: [string, string];
+    nullifierHash: string;
+    recipient: string;
+    claimedAmount: bigint;
+    token: string;
+    tier: number;
+    depositRoot: bigint;
+    expectedAmount: bigint;
+    fee: bigint;
+    relayer: string;
+    nonce: bigint;
+  }): Promise<StoredSignedTransaction> {
+    const value = {
+      ...argument,
+      pA: argument.pA.map(BigInt),
+      pB: argument.pB.map((row) => row.map(BigInt)),
+      pC: argument.pC.map(BigInt),
+    };
+    if (this.runtime.family === "evm") {
+      const data = new Interface(GRAVARC_WITHDRAW_ABI).encodeFunctionData("withdraw", [value]);
+      const request = await this.runtime.wallet.populateTransaction({
+        to: this.chain.gravArc,
+        data,
+        gasLimit: 3_000_000n,
+      });
+      const raw = await this.runtime.wallet.signTransaction(request);
+      return { purpose: "withdraw", family: "evm", hash: keccak256(raw), raw };
+    }
+    const tupleType = "(uint256[2],uint256[2][2],uint256[2],bytes32,address,uint256,address,uint8,uint256,uint256,uint256,address,uint256)";
+    const tupleValue = [
+      value.pA, value.pB, value.pC, value.nullifierHash, value.recipient,
+      value.claimedAmount, value.token, value.tier, value.depositRoot,
+      value.expectedAmount, value.fee, value.relayer, value.nonce,
+    ];
+    const raw = await this.signTron(
+      tronBase58FromCanonical(this.chain.gravArc),
+      `withdraw(${tupleType})`,
+      [{ type: tupleType, value: tupleValue }],
+    );
+    const hash = String((raw as Record<string, unknown>).txID ?? "");
+    return { purpose: "withdraw", family: "tron", hash, raw };
   }
 
   async broadcast(transaction: StoredSignedTransaction): Promise<void> {

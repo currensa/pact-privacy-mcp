@@ -47,7 +47,10 @@ export class PactPrivacyClient {
   async close(): Promise<void> {
     const selected = [...this.selectedChains.values()];
     this.selectedChains.clear();
-    const settled = await Promise.allSettled(selected);
+    const [settled] = await Promise.all([
+      Promise.allSettled(selected),
+      this.proofs.close().catch(() => undefined),
+    ]);
     for (const result of settled) {
       if (result.status === "fulfilled") closeChainRuntime(result.value.runtime);
     }

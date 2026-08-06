@@ -35,4 +35,14 @@ export class LocalProofService {
       bundleVersion,
     };
   }
+
+  async close(): Promise<void> {
+    const globals = globalThis as typeof globalThis & {
+      curve_bn128?: { terminate?: () => Promise<void> } | null;
+      curve_bls12381?: { terminate?: () => Promise<void> } | null;
+    };
+    for (const curve of [globals.curve_bn128, globals.curve_bls12381]) {
+      if (curve?.terminate) await curve.terminate();
+    }
+  }
 }

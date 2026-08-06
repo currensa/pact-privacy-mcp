@@ -9,6 +9,8 @@ import type { Prompter } from "./prompts.js";
 import { OperationService } from "../operations/service.js";
 import { DepositPreparationService, readDepositRecipients } from "../deposit/prepare.js";
 import { DepositExecutionService } from "../deposit/execute.js";
+import { WithdrawPreparationService } from "../withdraw/prepare.js";
+import { WithdrawExecutionService } from "../withdraw/execute.js";
 
 function stringOption(options: CliOptions, name: string, required = false): string | undefined {
   const value = options[name];
@@ -100,6 +102,10 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       }
       if (operation.kind === "deposit") {
         output(await new DepositExecutionService(client, operations).execute(operation.id));
+        return;
+      }
+      if (operation.kind === "withdraw") {
+        output(await new WithdrawExecutionService(client, operations).execute(operation.id));
         return;
       }
       const selected = await client.chain(operation.chainId);
@@ -216,6 +222,29 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         if (!environment.password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt allocations");
         output(await discovery.allocations(chainId, environment.password, booleanOption(invocation.options, "unwithdrawn")));
         return;
+      case "withdraw.prepare": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        const amount = stringOption(invocation.options, "amount");
+        output(await new WithdrawPreparationService(client, operations).prepare({
+          chainId,
+          allocationId: integerOption(invocation.options, "allocation", true)!,
+          ...(amount ? { amount } : {}),
+          all: booleanOption(invocation.options, "all"),
+        }));
+        return;
+      }
+      case "withdraw.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await operations.get(operationId);
+        if (operation.kind !== "withdraw") throw new Error(`Operation ${operationId} is not a withdrawal`);
+        await confirmed(
+          invocation.options,
+          prompter,
+          `Execute withdrawal ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.expectedAmount)} base units?`,
+        );
+        output(await new WithdrawExecutionService(client, operations).execute(operationId));
+        return;
+      }
       case "token.approve": {
         const service = await web3();
         const token = stringOption(invocation.options, "token", true)!;

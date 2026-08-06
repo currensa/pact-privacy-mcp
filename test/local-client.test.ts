@@ -7,6 +7,7 @@ import { canonicalFromTronAddress, tronBase58FromCanonical } from "../src/chain/
 import { closeChainRuntime, createChainRuntime } from "../src/chain/runtime.js";
 import { loadEnvironment, writeEnvironment } from "../src/config/env.js";
 import { buildAccountRegistration, decryptOwnSecret, deriveEncryptionKeyPair } from "../src/crypto/account.js";
+import { LocalProofService } from "../src/proof/prover.js";
 import { LocalSigner } from "../src/wallet/local-signer.js";
 import { verifyTypedData } from "ethers";
 import { Trx } from "tronweb";
@@ -38,6 +39,27 @@ test("closing an EVM runtime destroys its JSON-RPC provider", () => {
   assert.equal(runtime.provider.destroyed, false);
   closeChainRuntime(runtime);
   assert.equal(runtime.provider.destroyed, true);
+});
+
+test("closing the proof service terminates cached proving workers", async () => {
+  const globals = globalThis as typeof globalThis & {
+    curve_bn128?: { terminate?: () => Promise<void> } | null;
+  };
+  const previous = globals.curve_bn128;
+  let terminated = false;
+  globals.curve_bn128 = {
+    async terminate() {
+      terminated = true;
+      globals.curve_bn128 = null;
+    },
+  };
+  try {
+    await new LocalProofService({} as never).close();
+    assert.equal(terminated, true);
+  } finally {
+    if (previous === undefined) delete globals.curve_bn128;
+    else globals.curve_bn128 = previous;
+  }
 });
 
 test("account encryption is deterministic by family and decrypts locally", async () => {

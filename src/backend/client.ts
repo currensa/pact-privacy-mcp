@@ -112,6 +112,16 @@ export class PactPrivacyBackend {
     return this.request<{ siblings: string[]; nextIndex: number }>(`/deposit-path?chainId=${encodeURIComponent(String(chainId))}`);
   }
 
+  depositMembership(chainId: number, leafIndex: number): Promise<{
+    root: string;
+    depositLeaf: string;
+    siblings: string[];
+    pathIndices: number[];
+    leafCount: number;
+  }> {
+    return this.request(`/deposit-path/membership?chainId=${encodeURIComponent(String(chainId))}&leafIndex=${encodeURIComponent(String(leafIndex))}`);
+  }
+
   saveDeposition(input: {
     leafIndex: number;
     chainId: number;

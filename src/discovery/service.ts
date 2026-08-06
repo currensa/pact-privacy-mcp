@@ -6,7 +6,7 @@ import { PactPrivacyClient } from "../runtime/client.js";
 import { Web3Service } from "../web3/service.js";
 import { normalizeAddress } from "../chain/address.js";
 
-type WithdrawMessage = {
+export type WithdrawMessage = {
   nullifier: string;
   amount: string;
   token: string;
@@ -14,9 +14,13 @@ type WithdrawMessage = {
   tokenSymbol?: string;
   leafIndex: number;
   tier: number;
+  authRoot: string;
+  depositorSecretHash: string;
+  authPathElements: string[];
+  authPathIndices: number[];
 };
 
-function parseWithdrawMessage(value: string): WithdrawMessage {
+export function parseWithdrawMessage(value: string): WithdrawMessage {
   const parsed = JSON.parse(value) as Partial<WithdrawMessage>;
   if (
     typeof parsed.nullifier !== "string"
@@ -24,6 +28,10 @@ function parseWithdrawMessage(value: string): WithdrawMessage {
     || typeof parsed.token !== "string"
     || !Number.isSafeInteger(parsed.leafIndex)
     || !Number.isSafeInteger(parsed.tier)
+    || typeof parsed.authRoot !== "string"
+    || typeof parsed.depositorSecretHash !== "string"
+    || !Array.isArray(parsed.authPathElements)
+    || !Array.isArray(parsed.authPathIndices)
   ) throw new Error("Encrypted allocation has an invalid payload");
   return parsed as WithdrawMessage;
 }

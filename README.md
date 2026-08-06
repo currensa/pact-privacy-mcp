@@ -49,6 +49,26 @@ Runtime tools choose `chainId` per operation and infer EVM/TRON from backend
 configuration. A configured API key is checked for a matching
 `(address, family)` grant before a chain runtime is created.
 
+## Local storage
+
+Circuit artifacts are cached by default in:
+
+```text
+~/.cache/pact-privacy/circuits/
+```
+
+Set `PACT_PRIVACY_CIRCUIT_CACHE_DIR` in `.env` to use a different circuit-cache
+directory.
+
+Prepared and executed operation records are stored by default in:
+
+```text
+~/.local/share/pact-privacy/operations/
+```
+
+If `XDG_DATA_HOME` is set, the operations directory is instead
+`$XDG_DATA_HOME/pact-privacy/operations/`.
+
 ## CLI
 
 Learn [CLI Doc](./command.md) to use the full CLIs.
