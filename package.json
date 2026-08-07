@@ -10,7 +10,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "cli": "tsx src/cli/index.ts",
-    "init": "tsx src/cli/index.ts init",
     "dev": "tsx src/index.ts",
     "start": "node dist/src/index.js",
     "test": "npm run build && node --test dist/test/*.test.js",

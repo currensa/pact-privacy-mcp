@@ -5,7 +5,6 @@ import { resolve } from "node:path";
 import { writeEnvironment } from "../config/env.js";
 import { PactPrivacyBackend } from "../backend/client.js";
 import { LocalSigner } from "../wallet/local-signer.js";
-import { OnboardingService } from "./onboarding.js";
 import { TerminalPrompter } from "./prompts.js";
 import { registerWorkflowCommands } from "./commands.js";
 import { createCliExecutor } from "./executor.js";
@@ -19,22 +18,6 @@ const program = new Command()
   .version("0.1.0")
   .option("--account <address>", "local account address")
   .option("--env <path>", "standalone protected environment file");
-
-program.command("init")
-  .description("Initialize a walletless Pact Privacy account securely")
-  .option("--env <path>", "environment file", ".env")
-  .option("--backend <url>", "backend URL")
-  .option("--family <family>", "evm, tron, or both")
-  .option("--replace", "allow updating an existing environment file")
-  .action(async (options: { env: string; backend?: string; family?: string; replace?: boolean }) => {
-    const result = await new OnboardingService(new TerminalPrompter()).initialize({
-      envPath: options.env,
-      ...(options.backend ? { backendUrl: options.backend } : {}),
-      ...(options.family ? { family: options.family } : {}),
-      ...(options.replace !== undefined ? { replace: options.replace } : {}),
-    });
-    process.stderr.write(`Secure configuration written to ${result.envPath}\n`);
-  });
 
 program.command("status")
   .description("Check local configuration and backend connectivity without exposing credentials")

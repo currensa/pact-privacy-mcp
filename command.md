@@ -24,7 +24,6 @@ The tables below describe the purpose of each command. Detailed examples follow.
 
 | Command | Description |
 | --- | --- |
-| `init` | Interactively generate or import a wallet, initialize account encryption data, obtain an API key, and write a protected `.env`. |
 | `account add` | Generate or import another account and save a protected local profile. |
 | `account list` | List local accounts and the current default without displaying credentials. |
 | `account show` | Show addresses and registered families for one account. |
@@ -32,7 +31,7 @@ The tables below describe the purpose of each command. Detailed examples follow.
 | `account remove` | Remove local credentials only; backend data and operations remain. |
 | `account migrate` | Explicitly import a legacy `.env` and move its operations into the account directory. |
 | `status` | Check local configuration, backend connectivity, account initialization, and API-key grants without displaying credentials. |
-| `rotate-api-key` | Revoke and replace the API key stored in the local environment file. |
+| `rotate-api-key` | Revoke and replace the API key stored in the selected account profile or standalone environment file. |
 | `chain list` | List supported chains and their EVM or TRON family. |
 | `token list` | List configured tokens for one chain. |
 | `receiver list` | Find registered recipients whose public account data can receive private deposits. |
@@ -74,9 +73,8 @@ Common and administrative parameters:
 | `--env <path>` | Most commands | Use a protected environment file as a standalone account override. |
 | `--account <address>` | Most commands | Use one local account for this command. It overrides `PACT_PRIVACY_ACCOUNT` and the saved default. |
 | `--chain <chain-id>` | Chain-specific commands | Numeric chain ID from `chain list`, such as `11142220`; it is not a family or network name. |
-| `--family <family>` | `init`, `receiver list`, `address show` | `evm` or `tron`; `init` also accepts `both`. |
-| `--backend <url>` | `init` | Pact Privacy backend API URL written to the environment file. |
-| `--replace` | `init` | Permit replacement of existing managed account configuration after confirmation. |
+| `--family <family>` | `account add`, `receiver list`, `address show` | `evm` or `tron`; `account add` also accepts `both`. |
+| `--backend <url>` | `account add` | Pact Privacy backend API URL saved in the shared local configuration. |
 | `--confirm` | Write and execute commands | Skip the interactive confirmation. Validation and transaction-safety checks still run. |
 
 Discovery and basic Web3 parameters:
@@ -126,19 +124,12 @@ Recovery filtering:
 > After the package is published to npm, install it with
 > `npm install -g pact-privacy-mcp`. Both methods provide the `pactpay` command.
 
-Initialize an EVM and TRON account, create an API key, and write a protected
-`.env` interactively:
+Create account profiles and choose a default by address:
 
 ```bash
-pactpay init
-pactpay init --family both
-pactpay init --family evm --backend https://privacy.pactpay.app/api
-```
-
-For multi-account use, add profiles and choose a default by address:
-
-```bash
+pactpay account add
 pactpay account add --family both
+pactpay account add --family evm --backend https://privacy.pactpay.app/api
 pactpay account list
 pactpay account show 0xAccount...
 pactpay account use TAccount...

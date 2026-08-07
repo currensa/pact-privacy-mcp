@@ -1,20 +1,10 @@
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
 import { PactPrivacyBackend } from "../backend/client.js";
 import { buildAccountRegistration } from "../crypto/account.js";
 import type { ChainFamily } from "../core/types.js";
-import { writeEnvironment, type LocalEnvironment } from "../config/env.js";
+import type { LocalEnvironment } from "../config/env.js";
 import { LocalSigner } from "../wallet/local-signer.js";
 import type { Prompter } from "./prompts.js";
-
-export type OnboardingResult = {
-  envPath: string;
-  families: ChainFamily[];
-  addresses: Record<ChainFamily, string | undefined>;
-  apiKeyConfigured: boolean;
-};
 
 export type ProvisionedAccount = {
   environment: LocalEnvironment & Required<Pick<LocalEnvironment, "privateKey" | "backendUrl" | "password" | "apiKey">>;
@@ -29,43 +19,12 @@ function parseFamilies(value: string): ChainFamily[] {
   throw new Error("Family must be evm, tron, or both");
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function generatedSecret(): string {
   return randomBytes(32).toString("base64url");
 }
 
 export class OnboardingService {
   constructor(private readonly prompt: Prompter) {}
-
-  async initialize(options: {
-    envPath?: string;
-    backendUrl?: string;
-    family?: string;
-    replace?: boolean;
-  } = {}): Promise<OnboardingResult> {
-    const envPath = resolve(options.envPath ?? ".env");
-    let replace = options.replace ?? false;
-    if (await exists(envPath)) {
-      replace = replace || await this.prompt.confirm(`${envPath} exists. Update its managed Pact Privacy values?`);
-      if (!replace) throw new Error("Onboarding cancelled without changing the environment file");
-    }
-
-    const provisioned = await this.provision({
-      ...(options.backendUrl ? { backendUrl: options.backendUrl } : {}),
-      ...(options.family ? { family: options.family } : {}),
-    });
-    await writeEnvironment(envPath, provisioned.environment, { replace });
-
-    return { envPath, families: provisioned.families, addresses: provisioned.addresses, apiKeyConfigured: true };
-  }
 
   async provision(options: { backendUrl?: string; family?: string } = {}): Promise<ProvisionedAccount> {
     const backendUrl = options.backendUrl
