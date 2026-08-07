@@ -29,7 +29,6 @@ The tables below describe the purpose of each command. Detailed examples follow.
 | `account show` | Show addresses and registered families for one account. |
 | `account use` | Select the default account by EVM, canonical `0x`, or TRON address. |
 | `account remove` | Remove local credentials only; backend data and operations remain. |
-| `account migrate` | Explicitly import a legacy `.env` and move its operations into the account directory. |
 | `status` | Check local configuration, backend connectivity, account initialization, and API-key grants without displaying credentials. |
 | `rotate-api-key` | Revoke and replace the API key stored in the selected account profile or standalone environment file. |
 | `chain list` | List supported chains and their EVM or TRON family. |
@@ -136,15 +135,8 @@ pactpay account use TAccount...
 pactpay --account 0xAnotherAccount... balance list --chain 11142220
 ```
 
-Migrate an existing `.env` and its legacy operations explicitly:
-
-```bash
-pactpay account migrate --env .env
-```
-
-Migration is idempotent, leaves the `.env` in place, and reports records it
-cannot assign safely. Removing a profile requires confirmation and does not
-remove that account's operation history or backend account.
+Removing a profile requires confirmation and does not remove that account's
+operation history or backend account.
 
 Inspect local configuration, backend connectivity, account initialization, and
 API-key grants:

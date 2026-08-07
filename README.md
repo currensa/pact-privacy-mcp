@@ -35,14 +35,6 @@ npm run cli -- account list
 npm run cli -- account use <address>
 ```
 
-Existing `.env` users must migrate explicitly. This imports the account and
-moves legacy operation records into its account directory without deleting the
-`.env` file:
-
-```bash
-npm run cli -- account migrate --env .env
-```
-
 Plaintext account secrets are never stored. When prompted for API-key validity,
 enter a positive number of days or `never` for a key without an expiry date.
 
