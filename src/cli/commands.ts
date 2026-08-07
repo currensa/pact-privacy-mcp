@@ -32,6 +32,33 @@ function chainOption(command: Command): Command {
 }
 
 export function registerWorkflowCommands(program: Command, executor: CliExecutor): void {
+  const account = program.command("account").description("Manage local Pact Privacy accounts");
+  account.command("add")
+    .description("Generate or import and register another account")
+    .option("--backend <url>", "backend URL; defaults to the shared setting")
+    .option("--family <family>", "evm, tron, or both")
+    .action(invoke(executor, "account.add"));
+  account.command("list")
+    .description("List local accounts without credentials")
+    .action(invoke(executor, "account.list"));
+  account.command("show")
+    .description("Show one local account without credentials")
+    .argument("[address]")
+    .action(invoke(executor, "account.show", ["address"]));
+  account.command("use")
+    .description("Select the default account")
+    .argument("<address>")
+    .action(invoke(executor, "account.use", ["address"]));
+  account.command("remove")
+    .description("Remove local credentials without deleting the backend account")
+    .argument("<address>")
+    .option("--confirm", "confirm removal")
+    .action(invoke(executor, "account.remove", ["address"]));
+  account.command("migrate")
+    .description("Explicitly migrate a legacy environment and its operations")
+    .option("--env <path>", "legacy environment file", ".env")
+    .action(invoke(executor, "account.migrate"));
+
   const chain = program.command("chain").description("Inspect supported chains");
   chain.command("list")
     .description("List supported chains")
@@ -163,6 +190,7 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
   operation.command("list")
     .description("List durable operations")
     .option("--incomplete", "show only incomplete operations")
+    .option("--all-accounts", "show operations for every local account")
     .action(invoke(executor, "operation.list"));
   operation.command("cancel")
     .description("Cancel a preparation before any transaction is broadcast")

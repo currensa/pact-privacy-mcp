@@ -31,8 +31,8 @@ export class WithdrawExecutionService {
   constructor(
     private readonly client: PactPrivacyClient,
     private readonly operations = new OperationService(),
-    private readonly payloads = new WithdrawPayloadStore(),
-    private readonly lease = new OperationLease(),
+    private readonly payloads = new WithdrawPayloadStore(operations.directory),
+    private readonly lease = new OperationLease(operations.directory),
   ) {}
 
   private async submitAndConfirm(operationId: string, transaction: StoredSignedTransaction, gateway: DepositChainGateway) {

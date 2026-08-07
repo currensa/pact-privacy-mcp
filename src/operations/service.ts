@@ -9,12 +9,17 @@ import type {
 } from "./types.js";
 import { canonicalPlan, newOperationId, operationPlanHash } from "./plan.js";
 import { OperationStore } from "./store.js";
+import type { CanonicalAddress } from "../core/types.js";
 
 const HASH_PATTERN = /^(?:0x)?[a-fA-F0-9]{64}$/;
 const DEFAULT_TTL_MS = 15 * 60 * 1000;
 
-function assertRecord(record: OperationRecord): void {
-  if (record.schemaVersion !== 1) throw new Error(`Unsupported operation schema: ${record.id}`);
+function assertRecord(record: OperationRecord, accountAddress?: CanonicalAddress): void {
+  if (record.schemaVersion !== 1 && record.schemaVersion !== 2) throw new Error(`Unsupported operation schema: ${record.id}`);
+  if (accountAddress && record.accountAddress !== accountAddress) {
+    if (!record.accountAddress) throw new Error(`Legacy operation ${record.id} is not account-bound; run \`pactpay account migrate\``);
+    throw new Error(`Operation ${record.id} belongs to account ${record.accountAddress}, not ${accountAddress}`);
+  }
   if (!OPERATION_KINDS.includes(record.kind) || !OPERATION_STAGES.includes(record.stage)) {
     throw new Error(`Operation has invalid kind or stage: ${record.id}`);
   }
@@ -22,7 +27,15 @@ function assertRecord(record: OperationRecord): void {
 }
 
 export class OperationService {
-  constructor(private readonly store = new OperationStore(), private readonly clock: () => number = Date.now) {}
+  constructor(
+    private readonly store = new OperationStore(),
+    private readonly clock: () => number = Date.now,
+    private readonly accountAddress?: CanonicalAddress,
+  ) {}
+
+  get directory(): string {
+    return this.store.directory;
+  }
 
   async prepare(kind: OperationKind, chainId: number, plan: OperationPlan, ttlMs = DEFAULT_TTL_MS): Promise<OperationRecord> {
     if (!Number.isSafeInteger(chainId) || chainId < 0) throw new Error("Operation chainId must be a non-negative integer");
@@ -30,7 +43,8 @@ export class OperationService {
     const now = this.clock();
     const normalizedPlan = JSON.parse(canonicalPlan(plan)) as OperationPlan;
     const record: OperationRecord = {
-      schemaVersion: 1,
+      schemaVersion: this.accountAddress ? 2 : 1,
+      ...(this.accountAddress ? { accountAddress: this.accountAddress } : {}),
       id: newOperationId(now),
       kind,
       chainId,
@@ -47,10 +61,10 @@ export class OperationService {
   }
 
   private async refresh(record: OperationRecord): Promise<OperationRecord> {
-    assertRecord(record);
+    assertRecord(record, this.accountAddress);
     if (record.stage === "prepared" && record.expiresAt <= this.clock()) {
       return this.store.update(record.id, (current) => {
-        assertRecord(current);
+        assertRecord(current, this.accountAddress);
         if (current.stage === "prepared" && current.expiresAt <= this.clock()) current.stage = "expired";
       }, this.clock());
     }
@@ -76,7 +90,7 @@ export class OperationService {
 
   async transition(id: string, stage: OperationStage, allowedFrom: OperationStage[]): Promise<OperationRecord> {
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       if (!allowedFrom.includes(record.stage)) throw new Error(`Operation cannot move from ${record.stage} to ${stage}`);
       if (isTerminalStage(record.stage)) throw new Error(`Operation is already ${record.stage}`);
       record.stage = stage;
@@ -96,7 +110,7 @@ export class OperationService {
     if (!purpose.trim()) throw new Error("Transaction purpose is required");
     if (!HASH_PATTERN.test(hash)) throw new Error("Transaction hash must be 32 bytes");
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       if (isTerminalStage(record.stage)) throw new Error(`Operation is already ${record.stage}`);
       if (!["proving", "broadcasting", "pending"].includes(record.stage)) {
         throw new Error(`A transaction cannot be registered from stage ${record.stage}`);
@@ -115,7 +129,7 @@ export class OperationService {
 
   async markBroadcast(id: string, hash: string): Promise<OperationRecord> {
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       const transaction = record.transactions.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase());
       if (!transaction) throw new Error("Transaction hash must be registered before broadcast");
       if (transaction.state !== "registered") throw new Error(`Transaction is already ${transaction.state}`);
@@ -134,7 +148,7 @@ export class OperationService {
       if (!transaction.broadcastAt || transaction.state === "confirmed" || transaction.state === "failed") continue;
       const result = await status(transaction);
       await this.store.update(id, (record) => {
-        assertRecord(record);
+        assertRecord(record, this.accountAddress);
         const stored = record.transactions.find((entry) => entry.hash.toLowerCase() === transaction.hash.toLowerCase());
         if (!stored || stored.state === "confirmed" || stored.state === "failed") return;
         stored.checkedAt = this.clock();
@@ -153,7 +167,7 @@ export class OperationService {
 
   async recordTransactionStatus(id: string, hash: string, result: ChainTransactionStatus): Promise<OperationRecord> {
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       const transaction = record.transactions.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase());
       if (!transaction) throw new Error(`Transaction is not registered: ${hash}`);
       transaction.checkedAt = this.clock();
@@ -171,7 +185,7 @@ export class OperationService {
   async fail(id: string, error: unknown): Promise<OperationRecord> {
     const message = error instanceof Error ? error.message : String(error);
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       if (isTerminalStage(record.stage)) throw new Error(`Operation is already ${record.stage}`);
       record.resumeStage = record.stage;
       record.stage = "failed";
@@ -181,7 +195,7 @@ export class OperationService {
 
   async retryFailed(id: string): Promise<OperationRecord> {
     return this.store.update(id, (record) => {
-      assertRecord(record);
+      assertRecord(record, this.accountAddress);
       if (record.stage !== "failed" || !record.resumeStage) {
         throw new Error("Operation failure is not safely resumable");
       }

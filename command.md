@@ -7,7 +7,8 @@ After installing the published package globally, run commands with
 Examples use Celo Sepolia (`11142220`) and TRON Nile (`3448148188`). Token
 symbols are resolved from the selected chain configuration; an address may be
 used instead when symbols are ambiguous. Commands that need the account
-password read it from the protected `.env` or prompt for it without echoing.
+password read it from the protected profile or standalone `.env`, or prompt
+for it without echoing.
 Secrets, passwords, private keys, and proof witnesses must never be command-line
 arguments or output.
 
@@ -24,6 +25,12 @@ The tables below describe the purpose of each command. Detailed examples follow.
 | Command | Description |
 | --- | --- |
 | `init` | Interactively generate or import a wallet, initialize account encryption data, obtain an API key, and write a protected `.env`. |
+| `account add` | Generate or import another account and save a protected local profile. |
+| `account list` | List local accounts and the current default without displaying credentials. |
+| `account show` | Show addresses and registered families for one account. |
+| `account use` | Select the default account by EVM, canonical `0x`, or TRON address. |
+| `account remove` | Remove local credentials only; backend data and operations remain. |
+| `account migrate` | Explicitly import a legacy `.env` and move its operations into the account directory. |
 | `status` | Check local configuration, backend connectivity, account initialization, and API-key grants without displaying credentials. |
 | `rotate-api-key` | Revoke and replace the API key stored in the local environment file. |
 | `chain list` | List supported chains and their EVM or TRON family. |
@@ -64,7 +71,8 @@ Common and administrative parameters:
 
 | Parameter | Used by | Meaning |
 | --- | --- | --- |
-| `--env <path>` | Most commands | Protected environment file to read or update. Defaults to `./.env`. |
+| `--env <path>` | Most commands | Use a protected environment file as a standalone account override. |
+| `--account <address>` | Most commands | Use one local account for this command. It overrides `PACT_PRIVACY_ACCOUNT` and the saved default. |
 | `--chain <chain-id>` | Chain-specific commands | Numeric chain ID from `chain list`, such as `11142220`; it is not a family or network name. |
 | `--family <family>` | `init`, `receiver list`, `address show` | `evm` or `tron`; `init` also accepts `both`. |
 | `--backend <url>` | `init` | Pact Privacy backend API URL written to the environment file. |
@@ -126,6 +134,26 @@ pactpay init
 pactpay init --family both
 pactpay init --family evm --backend https://privacy.pactpay.app/api
 ```
+
+For multi-account use, add profiles and choose a default by address:
+
+```bash
+pactpay account add --family both
+pactpay account list
+pactpay account show 0xAccount...
+pactpay account use TAccount...
+pactpay --account 0xAnotherAccount... balance list --chain 11142220
+```
+
+Migrate an existing `.env` and its legacy operations explicitly:
+
+```bash
+pactpay account migrate --env .env
+```
+
+Migration is idempotent, leaves the `.env` in place, and reports records it
+cannot assign safely. Removing a profile requires confirmation and does not
+remove that account's operation history or backend account.
 
 Inspect local configuration, backend connectivity, account initialization, and
 API-key grants:
@@ -292,6 +320,7 @@ scanner indexing, or message delivery from the last safe stage:
 ```bash
 pactpay operation status op_01J...
 pactpay operation list --incomplete
+pactpay operation list --all-accounts
 pactpay operation cancel op_01J...
 pactpay operation resume op_01J...
 ```

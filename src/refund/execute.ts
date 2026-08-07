@@ -30,8 +30,8 @@ export class RefundExecutionService {
   constructor(
     private readonly client: PactPrivacyClient,
     private readonly operations = new OperationService(),
-    private readonly payloads = new RefundPayloadStore(),
-    private readonly lease = new OperationLease(),
+    private readonly payloads = new RefundPayloadStore(operations.directory),
+    private readonly lease = new OperationLease(operations.directory),
   ) {}
 
   private async submitAndConfirm(operationId: string, transaction: StoredSignedTransaction, gateway: DepositChainGateway) {

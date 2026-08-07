@@ -17,17 +17,31 @@ account-secret encryption, and circuit-artifact verification run locally.
 npm install
 ```
 
-### 2. Create the local account configuration
+### 2. Create a local account
 
 Run the interactive initialization command:
 
 ```bash
-npm run init
+npm run cli -- account add
 ```
 
 Choose EVM, TRON, or both. The command can generate or import a private key,
-initialize the selected Pact Privacy accounts, create an API key, and write the
-credentials to a protected `.env` file.
+initialize the selected Pact Privacy accounts, create an API key, and write a
+protected account profile. Add as many accounts as needed, then inspect or
+select them with:
+
+```bash
+npm run cli -- account list
+npm run cli -- account use <address>
+```
+
+Existing `.env` users must migrate explicitly. This imports the account and
+moves legacy operation records into its account directory without deleting the
+`.env` file:
+
+```bash
+npm run cli -- account migrate --env .env
+```
 
 Plaintext account secrets are never stored. When prompted for API-key validity,
 enter a positive number of days or `never` for a key without an expiry date.
@@ -72,7 +86,7 @@ npm run build
 
 ### 6. Configure the MCP server
 
-The payment MCP tools are not complete yet, but their local account, `.env`,
+The payment MCP tools are not complete yet, but their protected profiles,
 API-key, circuit-cache, and build preparation are the same as the CLI steps
 above. After building, register the compiled stdio entry point:
 
@@ -91,6 +105,10 @@ claude mcp list
 The current MCP server exposes only the connectivity test tool. Restart the MCP
 client after rebuilding or changing its configuration.
 
+MCP uses the saved default account. Set `PACT_PRIVACY_MCP_ACCOUNTS` to a
+comma-separated startup allowlist before enabling future fund-moving tools; the
+default account must be included.
+
 The MCP server uses stdout exclusively for protocol messages. The CLI writes
 status to stderr and never prints private keys, passwords, secrets, or API keys.
 
@@ -106,17 +124,25 @@ Circuit artifacts are cached by default in:
 ~/.cache/pact-privacy/circuits/
 ```
 
-Set `PACT_PRIVACY_CIRCUIT_CACHE_DIR` in `.env` to use a different circuit-cache
-directory.
+Set `PACT_PRIVACY_CIRCUIT_CACHE_DIR` in a standalone `.env` to use a different
+circuit-cache directory.
 
-Prepared and executed operation records are stored by default in:
+Protected account profiles and the shared default-account setting are stored in:
 
 ```text
-~/.local/share/pact-privacy/operations/
+~/.config/pact-privacy/
 ```
 
-If `XDG_DATA_HOME` is set, the operations directory is instead
-`$XDG_DATA_HOME/pact-privacy/operations/`.
+Prepared and executed operation records are stored per account in:
+
+```text
+~/.local/share/pact-privacy/accounts/<canonical-address>/operations/
+```
+
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` replace the corresponding default roots.
+Use global `--account <EVM-or-TRON-address>` to override the saved default for
+one command. `PACT_PRIVACY_ACCOUNT` provides a process-level default, while an
+explicit `--env <path>` runs as a standalone profile.
 
 ## CLI
 

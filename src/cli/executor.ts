@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 import type { ChainFamily } from "../core/types.js";
-import { loadEnvironment } from "../config/env.js";
 import { DiscoveryService } from "../discovery/service.js";
 import { PactPrivacyClient } from "../runtime/client.js";
 import { Web3Service } from "../web3/service.js";
@@ -13,6 +12,11 @@ import { WithdrawPreparationService } from "../withdraw/prepare.js";
 import { WithdrawExecutionService } from "../withdraw/execute.js";
 import { RefundPreparationService } from "../refund/prepare.js";
 import { RefundExecutionService } from "../refund/execute.js";
+import { AccountStore, accountOperationDirectory, profileFromEnvironment } from "../accounts/store.js";
+import { resolveAccountContext } from "../accounts/context.js";
+import { migrateLegacyAccount } from "../accounts/migration.js";
+import { OperationStore } from "../operations/store.js";
+import { OnboardingService } from "./onboarding.js";
 
 function stringOption(options: CliOptions, name: string, required = false): string | undefined {
   const value = options[name];
@@ -58,11 +62,116 @@ async function confirmed(options: CliOptions, prompter: Prompter, description: s
 
 export function createCliExecutor(prompter: Prompter): CliExecutor {
   return async (invocation: CliInvocation): Promise<void> => {
-    const operations = new OperationService();
+    const accountStore = new AccountStore();
     const operationId = invocation.arguments[0];
+    if (invocation.command === "account.add") {
+      const shared = await accountStore.shared();
+      const backendUrl = stringOption(invocation.options, "backend") ?? shared.backendUrl;
+      const family = stringOption(invocation.options, "family");
+      const provisioned = await new OnboardingService(prompter).provision({
+        ...(backendUrl ? { backendUrl } : {}),
+        ...(family ? { family } : {}),
+      });
+      const profile = await accountStore.add(profileFromEnvironment(provisioned.environment, provisioned.families));
+      await accountStore.updateShared({ backendUrl: provisioned.environment.backendUrl });
+      output({
+        address: profile.address,
+        families: profile.families,
+        addresses: profile.addresses,
+        isDefault: (await accountStore.shared()).defaultAccount === profile.address,
+      });
+      return;
+    }
+    if (invocation.command === "account.list") {
+      output(await accountStore.list());
+      return;
+    }
+    if (invocation.command === "account.show") {
+      const identifier = invocation.arguments[0] ?? stringOption(invocation.options, "account") ?? process.env.PACT_PRIVACY_ACCOUNT ?? (await accountStore.shared()).defaultAccount;
+      if (!identifier) throw new Error("No account selected");
+      const profile = await accountStore.get(identifier);
+      output({
+        address: profile.address,
+        families: profile.families,
+        addresses: profile.addresses,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+        isDefault: (await accountStore.shared()).defaultAccount === profile.address,
+      });
+      return;
+    }
+    if (invocation.command === "account.use") {
+      const identifier = invocation.arguments[0];
+      if (!identifier) throw new Error("Account address is required");
+      const selected = await accountStore.use(identifier);
+      output({ address: selected.address, isDefault: true });
+      return;
+    }
+    if (invocation.command === "account.migrate") {
+      output(await migrateLegacyAccount(resolve(stringOption(invocation.options, "env") ?? ".env"), accountStore));
+      return;
+    }
+    if (invocation.command === "account.remove") {
+      const identifier = invocation.arguments[0];
+      if (!identifier) throw new Error("Account address is required");
+      const profile = await accountStore.get(identifier);
+      const accountOperations = new OperationService(
+        new OperationStore(accountOperationDirectory(profile.address)),
+        Date.now,
+        profile.address,
+      );
+      const incomplete = await accountOperations.list(true);
+      const warning = incomplete.length > 0
+        ? ` It has ${incomplete.length} incomplete operation(s), which will remain on disk.`
+        : "";
+      await confirmed(invocation.options, prompter, `Remove local credentials for ${profile.address}?${warning} The backend account will not be deleted.`);
+      await accountStore.remove(profile.address);
+      output({ address: profile.address, removed: true, incompleteOperations: incomplete.length });
+      return;
+    }
+
+    if (invocation.command === "operation.list" && booleanOption(invocation.options, "allAccounts")) {
+      if (stringOption(invocation.options, "env")) throw new Error("--all-accounts cannot be combined with --env");
+      const records = await Promise.all((await accountStore.list()).map(async (profile) => (
+        new OperationService(
+          new OperationStore(accountOperationDirectory(profile.address)),
+          Date.now,
+          profile.address,
+        ).list(booleanOption(invocation.options, "incomplete"))
+      )));
+      output(records.flat().sort((left, right) => right.createdAt - left.createdAt));
+      return;
+    }
+
+    const selectedAccount = stringOption(invocation.options, "account");
+    const selectedEnv = stringOption(invocation.options, "env");
+    const context = await resolveAccountContext({
+      ...(selectedAccount ? { account: selectedAccount } : {}),
+      ...(selectedEnv ? { envPath: selectedEnv } : {}),
+      store: accountStore,
+    });
+    const operations = new OperationService(context.operations, Date.now, context.address);
+    const accountOperation = async (id: string) => {
+      try {
+        return await operations.get(id);
+      } catch (error) {
+        if (!(error instanceof Error && error.message === `Operation not found: ${id}`)) throw error;
+        for (const profile of await accountStore.list()) {
+          if (profile.address === context.address) continue;
+          try {
+            await new OperationStore(accountOperationDirectory(profile.address)).get(id);
+            throw new Error(`Operation ${id} belongs to account ${profile.address}; select it with --account`);
+          } catch (candidateError) {
+            if (candidateError instanceof Error && candidateError.message === `Operation not found: ${id}`) continue;
+            throw candidateError;
+          }
+        }
+        throw error;
+      }
+    };
     if (invocation.command === "operation.status") {
       if (!operationId) throw new Error("Operation ID is required");
-      output(await operations.get(operationId));
+      output(await accountOperation(operationId));
       return;
     }
     if (invocation.command === "operation.list") {
@@ -71,12 +180,12 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
     }
     if (invocation.command === "operation.cancel") {
       if (!operationId) throw new Error("Operation ID is required");
+      await accountOperation(operationId);
       output(await operations.cancel(operationId));
       return;
     }
 
-    const envPath = resolve(stringOption(invocation.options, "env") ?? ".env");
-    const environment = await loadEnvironment(envPath, { requireComplete: true, checkPermissions: true });
+    const environment = context.environment;
     const client = new PactPrivacyClient({
       ...environment,
       privateKey: environment.privateKey!,
@@ -93,7 +202,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
 
     if (invocation.command === "operation.resume") {
       if (!operationId) throw new Error("Operation ID is required");
-      const operation = await operations.get(operationId);
+      const operation = await accountOperation(operationId);
       if (operation.stage === "prepared") {
         output({ operation, nextAction: `Run pactpay ${operation.kind} execute ${operation.id} --confirm` });
         return;
@@ -213,7 +322,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       }
       case "deposit.execute": {
         if (!operationId) throw new Error("Operation ID is required");
-        const operation = await operations.get(operationId);
+        const operation = await accountOperation(operationId);
         if (operation.kind !== "deposit") throw new Error(`Operation ${operationId} is not a deposit`);
         await confirmed(
           invocation.options,
@@ -241,7 +350,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       }
       case "withdraw.execute": {
         if (!operationId) throw new Error("Operation ID is required");
-        const operation = await operations.get(operationId);
+        const operation = await accountOperation(operationId);
         if (operation.kind !== "withdraw") throw new Error(`Operation ${operationId} is not a withdrawal`);
         await confirmed(
           invocation.options,
@@ -261,7 +370,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       }
       case "refund.execute": {
         if (!operationId) throw new Error("Operation ID is required");
-        const operation = await operations.get(operationId);
+        const operation = await accountOperation(operationId);
         if (operation.kind !== "refund") throw new Error(`Operation ${operationId} is not a refund`);
         await confirmed(
           invocation.options,

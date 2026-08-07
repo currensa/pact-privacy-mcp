@@ -5,7 +5,10 @@ import { registerWorkflowCommands, type CliInvocation } from "../src/cli/command
 
 async function parse(args: string[]): Promise<CliInvocation> {
   let invocation: CliInvocation | undefined;
-  const program = new Command().exitOverride().option("--env <path>", "environment file", ".env");
+  const program = new Command()
+    .exitOverride()
+    .option("--env <path>", "environment file")
+    .option("--account <address>", "account address");
   registerWorkflowCommands(program, async (value) => {
     invocation = value;
   });
@@ -35,6 +38,17 @@ test("parses execute and recovery operation IDs", async () => {
   const resume = await parse(["operation", "resume", "op_123"]);
   assert.equal(resume.command, "operation.resume");
   assert.deepEqual(resume.arguments, ["op_123"]);
+});
+
+test("parses account management and all-account operation listing", async () => {
+  const use = await parse(["account", "use", "TAccount"]);
+  assert.equal(use.command, "account.use");
+  assert.deepEqual(use.arguments, ["TAccount"]);
+
+  const list = await parse(["--account", "0xAccount", "operation", "list", "--all-accounts"]);
+  assert.equal(list.command, "operation.list");
+  assert.equal(list.options.account, "0xAccount");
+  assert.equal(list.options.allAccounts, true);
 });
 
 test("parses refund preparation by deposit leaf", async () => {

@@ -45,8 +45,8 @@ export class DepositExecutionService {
   constructor(
     private readonly client: PactPrivacyClient,
     private readonly operations = new OperationService(),
-    private readonly payloads = new DepositPayloadStore(),
-    private readonly lease = new OperationLease(),
+    private readonly payloads = new DepositPayloadStore(operations.directory),
+    private readonly lease = new OperationLease(operations.directory),
     private readonly chainLease = new OperationLease(),
   ) {}
 

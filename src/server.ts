@@ -9,7 +9,7 @@ const echoOutputSchema = z.object({
   message: z.string(),
 });
 
-export function createServer(): McpServer {
+export function createServer(options: { accountAddress?: string; allowedAccountAddresses?: string[] } = {}): McpServer {
   const server = new McpServer(
     {
       name: "pact-privacy-mcp",
@@ -17,7 +17,7 @@ export function createServer(): McpServer {
     },
     {
       instructions:
-        "Use the echo tool to verify that this MCP server is connected and responding.",
+        `Use the echo tool to verify that this MCP server is connected and responding.${options.accountAddress ? ` The local account is ${options.accountAddress}; account access is restricted to ${options.allowedAccountAddresses?.join(", ") ?? options.accountAddress}.` : ""}`,
     },
   );
 

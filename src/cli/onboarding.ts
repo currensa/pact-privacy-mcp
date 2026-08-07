@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { PactPrivacyBackend } from "../backend/client.js";
 import { buildAccountRegistration } from "../crypto/account.js";
 import type { ChainFamily } from "../core/types.js";
-import { writeEnvironment } from "../config/env.js";
+import { writeEnvironment, type LocalEnvironment } from "../config/env.js";
 import { LocalSigner } from "../wallet/local-signer.js";
 import type { Prompter } from "./prompts.js";
 
@@ -14,6 +14,12 @@ export type OnboardingResult = {
   families: ChainFamily[];
   addresses: Record<ChainFamily, string | undefined>;
   apiKeyConfigured: boolean;
+};
+
+export type ProvisionedAccount = {
+  environment: LocalEnvironment & Required<Pick<LocalEnvironment, "privateKey" | "backendUrl" | "password" | "apiKey">>;
+  families: ChainFamily[];
+  addresses: Record<ChainFamily, string | undefined>;
 };
 
 function parseFamilies(value: string): ChainFamily[] {
@@ -52,6 +58,16 @@ export class OnboardingService {
       if (!replace) throw new Error("Onboarding cancelled without changing the environment file");
     }
 
+    const provisioned = await this.provision({
+      ...(options.backendUrl ? { backendUrl: options.backendUrl } : {}),
+      ...(options.family ? { family: options.family } : {}),
+    });
+    await writeEnvironment(envPath, provisioned.environment, { replace });
+
+    return { envPath, families: provisioned.families, addresses: provisioned.addresses, apiKeyConfigured: true };
+  }
+
+  async provision(options: { backendUrl?: string; family?: string } = {}): Promise<ProvisionedAccount> {
     const backendUrl = options.backendUrl
       ?? await this.prompt.text("Pact Privacy backend URL", "https://privacy.pactpay.app/api");
     const families = parseFamilies(options.family ?? await this.prompt.text("Account family (evm, tron, or both)", "evm"));
@@ -127,14 +143,13 @@ export class OnboardingService {
       }
     }
 
-    await writeEnvironment(envPath, {
+    const environment = {
       privateKey: signer.privateKey,
       backendUrl,
       password,
       apiKey,
-    }, { replace });
-
-    return { envPath, families, addresses, apiKeyConfigured: true };
+    };
+    return { environment, families, addresses };
   }
 
   private async requireSecret(label: string): Promise<string> {

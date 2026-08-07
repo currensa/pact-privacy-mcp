@@ -19,6 +19,10 @@ export function defaultOperationDirectory(): string {
   return resolve(dataRoot, "pact-privacy", "operations");
 }
 
+export function legacyOperationDirectory(): string {
+  return defaultOperationDirectory();
+}
+
 export class OperationStore {
   readonly directory: string;
 

@@ -32,7 +32,8 @@ export type OperationTransaction = {
 export type OperationPlan = Record<string, unknown>;
 
 export type OperationRecord = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
+  accountAddress?: `0x${string}`;
   id: string;
   kind: OperationKind;
   chainId: number;
