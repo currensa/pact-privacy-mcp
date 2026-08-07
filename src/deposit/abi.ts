@@ -47,3 +47,22 @@ export const GRAVARC_WITHDRAW_ABI = [{
     ],
   }],
 }] as const;
+
+export const GRAVARC_REFUND_ABI = [{
+  type: "function", name: "refund", stateMutability: "nonpayable", outputs: [],
+  inputs: [{
+    name: "p", type: "tuple", components: [
+      { name: "pA", type: "uint256[2]" },
+      { name: "pB", type: "uint256[2][2]" },
+      { name: "pC", type: "uint256[2]" },
+      { name: "depositRoot", type: "uint256" },
+      { name: "nullifierHash", type: "bytes32[]" },
+      { name: "token", type: "address" },
+      { name: "refundAmount", type: "uint256" },
+      { name: "fee", type: "uint256" },
+      { name: "relayer", type: "address" },
+      { name: "refunder", type: "address" },
+      { name: "tier", type: "uint8" },
+    ],
+  }],
+}] as const;

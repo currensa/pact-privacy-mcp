@@ -4,7 +4,7 @@ import { tronBase58FromCanonical } from "../chain/address.js";
 import type { ChainDetails } from "../core/types.js";
 import type { ChainRuntime } from "../chain/runtime.js";
 import { FUNGIBLE_TOKEN_ABI } from "../web3/abi.js";
-import { GRAVARC_DEPOSIT_ABI, GRAVARC_WITHDRAW_ABI } from "./abi.js";
+import { GRAVARC_DEPOSIT_ABI, GRAVARC_REFUND_ABI, GRAVARC_WITHDRAW_ABI } from "./abi.js";
 import type { DepositProofResult, DepositPlan } from "./types.js";
 import type { StoredSignedTransaction } from "./payload-store.js";
 
@@ -169,6 +169,49 @@ export class DepositChainGateway {
     );
     const hash = String((raw as Record<string, unknown>).txID ?? "");
     return { purpose: "withdraw", family: "tron", hash, raw };
+  }
+
+  async signRefund(argument: {
+    pA: [string, string];
+    pB: [[string, string], [string, string]];
+    pC: [string, string];
+    depositRoot: bigint;
+    nullifierHash: `0x${string}`[];
+    token: string;
+    refundAmount: bigint;
+    fee: bigint;
+    relayer: string;
+    refunder: string;
+    tier: number;
+  }): Promise<StoredSignedTransaction> {
+    const value = {
+      ...argument,
+      pA: argument.pA.map(BigInt),
+      pB: argument.pB.map((row) => row.map(BigInt)),
+      pC: argument.pC.map(BigInt),
+    };
+    if (this.runtime.family === "evm") {
+      const data = new Interface(GRAVARC_REFUND_ABI).encodeFunctionData("refund", [value]);
+      const request = await this.runtime.wallet.populateTransaction({
+        to: this.chain.gravArc,
+        data,
+        gasLimit: 4_000_000n,
+      });
+      const raw = await this.runtime.wallet.signTransaction(request);
+      return { purpose: "refund", family: "evm", hash: keccak256(raw), raw };
+    }
+    const tupleType = "(uint256[2],uint256[2][2],uint256[2],uint256,bytes32[],address,uint256,uint256,address,address,uint8)";
+    const tupleValue = [
+      value.pA, value.pB, value.pC, value.depositRoot, value.nullifierHash,
+      value.token, value.refundAmount, value.fee, value.relayer, value.refunder, value.tier,
+    ];
+    const raw = await this.signTron(
+      tronBase58FromCanonical(this.chain.gravArc),
+      `refund(${tupleType})`,
+      [{ type: tupleType, value: tupleValue }],
+    );
+    const hash = String((raw as Record<string, unknown>).txID ?? "");
+    return { purpose: "refund", family: "tron", hash, raw };
   }
 
   async broadcast(transaction: StoredSignedTransaction): Promise<void> {

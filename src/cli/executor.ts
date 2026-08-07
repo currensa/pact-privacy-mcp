@@ -11,6 +11,8 @@ import { DepositPreparationService, readDepositRecipients } from "../deposit/pre
 import { DepositExecutionService } from "../deposit/execute.js";
 import { WithdrawPreparationService } from "../withdraw/prepare.js";
 import { WithdrawExecutionService } from "../withdraw/execute.js";
+import { RefundPreparationService } from "../refund/prepare.js";
+import { RefundExecutionService } from "../refund/execute.js";
 
 function stringOption(options: CliOptions, name: string, required = false): string | undefined {
   const value = options[name];
@@ -106,6 +108,10 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       }
       if (operation.kind === "withdraw") {
         output(await new WithdrawExecutionService(client, operations).execute(operation.id));
+        return;
+      }
+      if (operation.kind === "refund") {
+        output(await new RefundExecutionService(client, operations).execute(operation.id));
         return;
       }
       const selected = await client.chain(operation.chainId);
@@ -243,6 +249,26 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
           `Execute withdrawal ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.expectedAmount)} base units?`,
         );
         output(await new WithdrawExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "refund.prepare": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        output(await new RefundPreparationService(client, operations).prepare({
+          chainId,
+          leafIndex: integerOption(invocation.options, "leafIndex", true)!,
+        }));
+        return;
+      }
+      case "refund.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await operations.get(operationId);
+        if (operation.kind !== "refund") throw new Error(`Operation ${operationId} is not a refund`);
+        await confirmed(
+          invocation.options,
+          prompter,
+          `Execute refund ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.refundAmountAtPreparation)} base units?`,
+        );
+        output(await new RefundExecutionService(client, operations).execute(operationId));
         return;
       }
       case "token.approve": {

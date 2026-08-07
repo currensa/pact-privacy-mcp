@@ -37,6 +37,13 @@ test("parses execute and recovery operation IDs", async () => {
   assert.deepEqual(resume.arguments, ["op_123"]);
 });
 
+test("parses refund preparation by deposit leaf", async () => {
+  const result = await parse(["refund", "prepare", "--chain", "11142220", "--leaf-index", "42"]);
+  assert.equal(result.command, "refund.prepare");
+  assert.equal(result.options.chain, "11142220");
+  assert.equal(result.options.leafIndex, "42");
+});
+
 test("parses EVM DeFi private redeposit inputs", async () => {
   const result = await parse([
     "defi", "prepare", "--chain", "11142220", "--allocation", "735", "--amount", "100",

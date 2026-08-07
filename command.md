@@ -48,8 +48,8 @@ Private workflows use an immutable preparation followed by explicit execution:
 | `deposit execute` | Revalidate the plan, generate the proof and ciphertext locally, submit transactions, and deliver indexed backend records. | Available |
 | `withdraw prepare` | Select and decrypt one allocation, validate its remaining on-chain amount, and prepare a partial or full withdrawal. | Available |
 | `withdraw execute` | Refresh claimed state and membership data, generate the proof locally, and submit the withdrawal. | Available |
-| `refund prepare` | Select an owned refundable deposit and calculate its current refundable result. | Planned |
-| `refund execute` | Generate and submit the refund proof, then update the backend after confirmation. | Planned |
+| `refund prepare` | Select an owned refundable deposit and calculate its current refundable result. | Available |
+| `refund execute` | Generate and submit the refund proof, then update the backend after confirmation. | Available |
 
 | Recovery command | Description |
 | --- | --- |
@@ -102,6 +102,21 @@ Recovery filtering:
 | `--incomplete` | Limit `operation list` to operations that still require execution or reconciliation. |
 
 ## Completed commands
+
+> **Note:** The examples below use `pactpay`. If the package is not installed
+> globally, run the equivalent development command by replacing `pactpay` with
+> `npm run cli --`, for example `npm run cli -- chain list`.
+>
+> To install the current local project globally, run these commands from the
+> project directory:
+>
+> ```bash
+> npm run build
+> npm install -g .
+> ```
+>
+> After the package is published to npm, install it with
+> `npm install -g pact-privacy-mcp`. Both methods provide the `pactpay` command.
 
 Initialize an EVM and TRON account, create an API key, and write a protected
 `.env` interactively:

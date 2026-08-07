@@ -152,6 +152,13 @@ export class PactPrivacyBackend {
     });
   }
 
+  markDepositionRefunded(chainId: number, leafIndex: number): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>("/depositions/refund", {
+      method: "PATCH",
+      body: JSON.stringify({ chainId, leafIndex, isRefunded: true }),
+    });
+  }
+
   async createAccount(
     signer: LocalSigner,
     family: ChainFamily,
