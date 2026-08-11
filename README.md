@@ -68,6 +68,18 @@ Deposit, withdrawal, and refund use separate `prepare` and `execute` commands.
 Preparation moves no funds. Review the returned operation before executing it
 with explicit confirmation.
 
+Relayed withdrawal is also available. It caches the proof artifacts before
+obtaining a fee quote, generates proof-bound calldata locally, and tracks the
+relayer's durable submission:
+
+```bash
+npm run cli -- relayed-withdraw prepare --chain 11142220 --allocation 735 \
+  --amount 250 --recipient 0xReceiver... --max-fee 0.25 \
+  --relayer http://localhost:9000
+npm run cli -- relayed-withdraw execute op_01J... --confirm
+npm run cli -- relayed-withdraw status op_01J...
+```
+
 ### 5. Build and test
 
 ```bash

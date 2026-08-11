@@ -11,6 +11,10 @@ export type Groth16Proof = {
 export class LocalProofService {
   constructor(private readonly artifacts: CircuitArtifactCache) {}
 
+  async prepare(circuit: CircuitName, tier: CircuitTier): Promise<void> {
+    await this.artifacts.bundle(circuit, tier);
+  }
+
   async prove(circuit: CircuitName, tier: CircuitTier, input: Record<string, unknown>): Promise<Groth16Proof> {
     const { wasmPath, zkeyPath, bundleVersion } = await this.artifacts.bundle(circuit, tier);
     const { groth16 } = await import("snarkjs");
