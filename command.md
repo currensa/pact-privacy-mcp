@@ -300,7 +300,7 @@ the quote expiry:
 ```bash
 pactpay relayed-withdraw prepare --chain 11142220 --allocation 735 \
   --amount 250.00 --recipient 0xReceiver... --max-fee 0.25 \
-  --relayer http://localhost:9000
+  --relayer http://150.109.25.172:9000
 pactpay relayed-withdraw execute op_01J... --confirm
 pactpay relayed-withdraw status op_01J...
 ```
@@ -337,7 +337,7 @@ the transaction is confirmed. The same commands apply to TRON chains.
 ```bash
 pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
   --refunder 0xDepositor... --max-fee 0.50 \
-  --relayer https://relayer.example
+  --relayer http://150.109.25.172:9000
 pactpay relayed-refund execute op_01J... --confirm
 pactpay relayed-refund status op_01J...
 ```
