@@ -58,6 +58,38 @@ test("parses refund preparation by deposit leaf", async () => {
   assert.equal(result.options.leafIndex, "42");
 });
 
+test("parses relayed withdrawal quote limits and recipient", async () => {
+  const result = await parse([
+    "relayed-withdraw", "prepare", "--chain", "11142220", "--allocation", "735",
+    "--amount", "250", "--recipient", "0x1111111111111111111111111111111111111111",
+    "--max-fee", "0.25", "--relayer", "http://localhost:9000",
+  ]);
+  assert.equal(result.command, "relayed-withdraw.prepare");
+  assert.equal(result.options.maxFee, "0.25");
+  assert.equal(result.options.relayer, "http://localhost:9000");
+});
+
+test("allows a relayed withdrawal without a maximum fee", async () => {
+  const result = await parse([
+    "relayed-withdraw", "prepare", "--chain", "11142220", "--allocation", "735", "--all",
+    "--recipient", "0x1111111111111111111111111111111111111111", "--relayer", "http://localhost:9000",
+  ]);
+  assert.equal(result.command, "relayed-withdraw.prepare");
+  assert.equal(result.options.maxFee, undefined);
+});
+
+test("parses relayed refund recipient and optional fee limit", async () => {
+  const result = await parse([
+    "relayed-refund", "prepare", "--chain", "11142220", "--leaf-index", "42",
+    "--refunder", "0x1111111111111111111111111111111111111111", "--max-fee", "0.50",
+    "--relayer", "http://localhost:9000",
+  ]);
+  assert.equal(result.command, "relayed-refund.prepare");
+  assert.equal(result.options.leafIndex, "42");
+  assert.equal(result.options.refunder, "0x1111111111111111111111111111111111111111");
+  assert.equal(result.options.maxFee, "0.50");
+});
+
 test("parses EVM DeFi private redeposit inputs", async () => {
   const result = await parse([
     "defi", "prepare", "--chain", "11142220", "--allocation", "735", "--amount", "100",
