@@ -58,6 +58,9 @@ Private workflows use an immutable preparation followed by explicit execution:
 | `relayed-withdraw status` | Refresh the durable relayer operation and its transaction state. | Available |
 | `refund prepare` | Select an owned refundable deposit and calculate its current refundable result. | Available |
 | `refund execute` | Generate and submit the refund proof, then update the backend after confirmation. | Available |
+| `relayed-refund prepare` | Refresh refundable state, cache the circuit, obtain a relayer quote, and bind the public refunder and fee limit. | Available |
+| `relayed-refund execute` | Generate proof-bound calldata locally and submit it to the quoted relayer without using the local key for gas. | Available |
+| `relayed-refund status` | Refresh the durable relayer operation and finish the backend refund update after confirmation. | Available |
 
 | Recovery command | Description |
 | --- | --- |
@@ -89,7 +92,7 @@ Discovery and basic Web3 parameters:
 | `--amount <amount>` | Approval, transfer, and withdraw commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
 | `--to <address>` | Transfer commands | Public recipient address in the selected chain family. |
 | `--hash <hash>` | `transaction status` | EVM transaction hash or TRON transaction ID. |
-| `--leaf-index <index>` | `deposit list`, `refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
+| `--leaf-index <index>` | `deposit list`, `refund prepare`, `relayed-refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
 | `--unwithdrawn` | `allocation list` | Return only allocations with a positive remaining amount that have not been refunded. |
 
 Private-workflow parameters:
@@ -102,7 +105,8 @@ Private-workflow parameters:
 | `--allocation <id>` | `withdraw prepare` | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
 | `--all` | Withdrawal preparation | Withdraw the allocation's full current remaining amount. It cannot be combined with `--amount`. |
 | `--recipient <address>` | `relayed-withdraw prepare` | Public chain-family address that receives the withdrawn amount after the relayer fee. |
-| `--max-fee <amount>` | `relayed-withdraw prepare` | Optional maximum human-readable token fee. When omitted, the relayer's exact quoted fee is accepted. |
+| `--refunder <address>` | `relayed-refund prepare` | Public chain-family address that receives the refund after the relayer fee. |
+| `--max-fee <amount>` | Relayed preparation | Optional maximum human-readable token fee. When omitted, the relayer's exact quoted fee is accepted. |
 | `--relayer <url>` | Relayed preparation | HTTP(S) base URL of the selected relayer. |
 | `<operation-id>` | Execute, status, cancel, and resume commands | Local durable ID returned by a preparation, such as `op_01J...`. It is not a transaction hash. |
 
@@ -328,6 +332,21 @@ Preparation obtains all related withdrawal state. Execution decrypts refund
 data and proves locally, submits the refund, and updates the backend only after
 the transaction is confirmed. The same commands apply to TRON chains.
 
+### Relayed refund
+
+```bash
+pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
+  --refunder 0xDepositor... --max-fee 0.50 \
+  --relayer https://relayer.example
+pactpay relayed-refund execute op_01J... --confirm
+pactpay relayed-refund status op_01J...
+```
+
+Preparation refreshes every related claimed/refunded state before obtaining a
+short-lived quote. Execution generates proof-bound calldata locally. After the
+relayer confirms the transaction, the CLI marks the backend deposition
+refunded; `status` or `operation resume` safely retries only that update.
+
 ## Recovery
 
 Every prepared operation has durable, non-secret state. Check progress after a
@@ -353,25 +372,6 @@ never repeat a fund-moving transaction whose outcome is unknown.
 ## Future work
 
 The commands in this section are designs only and are not implemented.
-
-### Milestone 1 remainder: Relayed refund
-
-The existing direct deposit, withdrawal, and refund commands continue to sign
-and submit transactions with the local private key.
-
-#### Relayed refund
-
-```bash
-pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
-  --refunder 0xDepositor... --fee 0.50 \
-  --relayer https://relayer.example
-pactpay relayed-refund execute op_01J... --confirm
-pactpay relayed-refund status op_01J...
-```
-
-The proof must bind the public refunder address, quoted relayer address, and
-fee. Execution must refresh every related claimed and refunded state before
-generating the proof.
 
 ### Milestone 2: DeFi and relayed DeFi
 

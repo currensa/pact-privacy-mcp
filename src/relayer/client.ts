@@ -1,5 +1,6 @@
-export type WithdrawQuote = {
+export type RelayerQuote = {
   id: string;
+  operation?: "withdraw" | "refund";
   chainId: number;
   gravArc: string;
   relayer: string;
@@ -13,8 +14,12 @@ export type WithdrawQuote = {
   expiresAt: string;
 };
 
+export type WithdrawQuote = RelayerQuote;
+export type RefundQuote = RelayerQuote;
+
 export type RelayerOperation = {
   id: string;
+  operation?: "withdraw" | "refund";
   chainId: number;
   state: "queued" | "simulating" | "signed" | "submitted" | "confirmed" | "failed";
   transactionHash: string | null;
@@ -72,6 +77,14 @@ export class RelayerClient {
 
   quoteWithdraw(input: { chainId: number; token: string; amount: string; tier: number }): Promise<WithdrawQuote> {
     return this.request<WithdrawQuote>("/v1/withdraw/quote", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  quoteRefund(input: { chainId: number; token: string; amount: string; tier: number }): Promise<RefundQuote> {
+    return this.request<RefundQuote>("/v1/refund/quote", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  submitRefund(input: { chainId: number; quoteId: string; calldata: string }): Promise<RelayerOperation> {
+    return this.request<RelayerOperation>("/v1/refund", { method: "POST", body: JSON.stringify(input) });
   }
 
   submitWithdraw(input: { chainId: number; quoteId: string; calldata: string }): Promise<RelayerOperation> {

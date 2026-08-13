@@ -183,6 +183,23 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .option("--confirm", "confirm execution")
     .action(invoke(executor, "refund.execute", ["operationId"]));
 
+  const relayedRefund = program.command("relayed-refund").description("Manage relayer-submitted private refunds");
+  chainOption(relayedRefund.command("prepare").description("Prepare a relayed private refund"))
+    .requiredOption("--leaf-index <index>", "deposit leaf index")
+    .requiredOption("--refunder <address>", "public refund recipient")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-refund.prepare"));
+  relayedRefund.command("execute")
+    .description("Execute a prepared relayed refund")
+    .argument("<operation-id>")
+    .option("--confirm", "confirm execution")
+    .action(invoke(executor, "relayed-refund.execute", ["operationId"]));
+  relayedRefund.command("status")
+    .description("Refresh and show a relayed refund")
+    .argument("<operation-id>")
+    .action(invoke(executor, "relayed-refund.status", ["operationId"]));
+
   const defi = program.command("defi").description("Manage EVM-only private DeFi withdrawals");
   chainOption(defi.command("prepare").description("Prepare an EVM DeFi withdrawal"))
     .requiredOption("--allocation <id>", "allocation ID")
