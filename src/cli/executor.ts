@@ -12,6 +12,10 @@ import { WithdrawPreparationService } from "../withdraw/prepare.js";
 import { WithdrawExecutionService } from "../withdraw/execute.js";
 import { RefundPreparationService } from "../refund/prepare.js";
 import { RefundExecutionService } from "../refund/execute.js";
+import { RelayedWithdrawPreparationService } from "../relayed-withdraw/prepare.js";
+import { RelayedWithdrawExecutionService } from "../relayed-withdraw/execute.js";
+import { RelayedRefundPreparationService } from "../relayed-refund/prepare.js";
+import { RelayedRefundExecutionService } from "../relayed-refund/execute.js";
 import { AccountStore, accountOperationDirectory, profileFromEnvironment } from "../accounts/store.js";
 import { resolveAccountContext } from "../accounts/context.js";
 import { migrateLegacyAccount } from "../accounts/migration.js";
@@ -219,6 +223,14 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         output(await new WithdrawExecutionService(client, operations).execute(operation.id));
         return;
       }
+      if (operation.kind === "relayed-withdraw") {
+        output(await new RelayedWithdrawExecutionService(client, operations).execute(operation.id));
+        return;
+      }
+      if (operation.kind === "relayed-refund") {
+        output(await new RelayedRefundExecutionService(client, operations).execute(operation.id));
+        return;
+      }
       if (operation.kind === "refund") {
         output(await new RefundExecutionService(client, operations).execute(operation.id));
         return;
@@ -360,6 +372,40 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         output(await new WithdrawExecutionService(client, operations).execute(operationId));
         return;
       }
+      case "relayed-withdraw.prepare": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        const amount = stringOption(invocation.options, "amount");
+        const maximumFee = stringOption(invocation.options, "maxFee");
+        output(await new RelayedWithdrawPreparationService(client, operations).prepare({
+          chainId,
+          allocationId: integerOption(invocation.options, "allocation", true)!,
+          ...(amount ? { amount } : {}),
+          all: booleanOption(invocation.options, "all"),
+          recipient: stringOption(invocation.options, "recipient", true)!,
+          ...(maximumFee ? { maximumFee } : {}),
+          relayerUrl: stringOption(invocation.options, "relayer", true)!,
+        }));
+        return;
+      }
+      case "relayed-withdraw.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-withdraw") throw new Error(`Operation ${operationId} is not a relayed withdrawal`);
+        await confirmed(
+          invocation.options,
+          prompter,
+          `Submit relayed withdrawal ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.expectedAmount)} base units with fee ${String(operation.plan.fee)}?`,
+        );
+        output(await new RelayedWithdrawExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "relayed-withdraw.status": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-withdraw") throw new Error(`Operation ${operationId} is not a relayed withdrawal`);
+        output(await new RelayedWithdrawExecutionService(client, operations).status(operationId));
+        return;
+      }
       case "refund.prepare": {
         if (chainId === undefined) throw new Error("--chain is required");
         output(await new RefundPreparationService(client, operations).prepare({
@@ -378,6 +424,37 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
           `Execute refund ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.refundAmountAtPreparation)} base units?`,
         );
         output(await new RefundExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "relayed-refund.prepare": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        const maximumFee = stringOption(invocation.options, "maxFee");
+        output(await new RelayedRefundPreparationService(client, operations).prepare({
+          chainId,
+          leafIndex: integerOption(invocation.options, "leafIndex", true)!,
+          refunder: stringOption(invocation.options, "refunder", true)!,
+          ...(maximumFee ? { maximumFee } : {}),
+          relayerUrl: stringOption(invocation.options, "relayer", true)!,
+        }));
+        return;
+      }
+      case "relayed-refund.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-refund") throw new Error(`Operation ${operationId} is not a relayed refund`);
+        await confirmed(
+          invocation.options,
+          prompter,
+          `Submit relayed refund ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.refundAmount)} base units with fee ${String(operation.plan.fee)}?`,
+        );
+        output(await new RelayedRefundExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "relayed-refund.status": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-refund") throw new Error(`Operation ${operationId} is not a relayed refund`);
+        output(await new RelayedRefundExecutionService(client, operations).status(operationId));
         return;
       }
       case "token.approve": {

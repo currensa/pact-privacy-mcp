@@ -154,6 +154,25 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .option("--confirm", "confirm execution")
     .action(invoke(executor, "withdraw.execute", ["operationId"]));
 
+  const relayedWithdraw = program.command("relayed-withdraw").description("Manage relayer-submitted private withdrawals");
+  chainOption(relayedWithdraw.command("prepare").description("Prepare a relayed private withdrawal"))
+    .requiredOption("--allocation <id>", "allocation ID")
+    .option("--amount <amount>", "decimal amount")
+    .option("--all", "withdraw all remaining funds")
+    .requiredOption("--recipient <address>", "public withdrawal recipient")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-withdraw.prepare"));
+  relayedWithdraw.command("execute")
+    .description("Execute a prepared relayed withdrawal")
+    .argument("<operation-id>")
+    .option("--confirm", "confirm execution")
+    .action(invoke(executor, "relayed-withdraw.execute", ["operationId"]));
+  relayedWithdraw.command("status")
+    .description("Refresh and show a relayed withdrawal")
+    .argument("<operation-id>")
+    .action(invoke(executor, "relayed-withdraw.status", ["operationId"]));
+
   const refund = program.command("refund").description("Manage private refunds");
   chainOption(refund.command("prepare").description("Prepare a private refund"))
     .requiredOption("--leaf-index <index>", "deposit leaf index")
@@ -163,6 +182,23 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .argument("<operation-id>")
     .option("--confirm", "confirm execution")
     .action(invoke(executor, "refund.execute", ["operationId"]));
+
+  const relayedRefund = program.command("relayed-refund").description("Manage relayer-submitted private refunds");
+  chainOption(relayedRefund.command("prepare").description("Prepare a relayed private refund"))
+    .requiredOption("--leaf-index <index>", "deposit leaf index")
+    .requiredOption("--refunder <address>", "public refund recipient")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-refund.prepare"));
+  relayedRefund.command("execute")
+    .description("Execute a prepared relayed refund")
+    .argument("<operation-id>")
+    .option("--confirm", "confirm execution")
+    .action(invoke(executor, "relayed-refund.execute", ["operationId"]));
+  relayedRefund.command("status")
+    .description("Refresh and show a relayed refund")
+    .argument("<operation-id>")
+    .action(invoke(executor, "relayed-refund.status", ["operationId"]));
 
   const defi = program.command("defi").description("Manage EVM-only private DeFi withdrawals");
   chainOption(defi.command("prepare").description("Prepare an EVM DeFi withdrawal"))

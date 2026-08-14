@@ -1,4 +1,4 @@
-export const OPERATION_KINDS = ["deposit", "withdraw", "refund", "defi"] as const;
+export const OPERATION_KINDS = ["deposit", "withdraw", "relayed-withdraw", "refund", "relayed-refund", "defi"] as const;
 export type OperationKind = typeof OPERATION_KINDS[number];
 
 export const OPERATION_STAGES = [

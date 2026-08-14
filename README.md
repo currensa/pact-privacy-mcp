@@ -35,14 +35,6 @@ npm run cli -- account list
 npm run cli -- account use <address>
 ```
 
-Existing `.env` users must migrate explicitly. This imports the account and
-moves legacy operation records into its account directory without deleting the
-`.env` file:
-
-```bash
-npm run cli -- account migrate --env .env
-```
-
 Plaintext account secrets are never stored. When prompted for API-key validity,
 enter a positive number of days or `never` for a key without an expiry date.
 
@@ -64,17 +56,12 @@ npm run cli -- rotate-api-key
 
 ### 4. Use the CLI
 
-List the available commands and follow the examples in [command.md](./command.md):
+The complete command reference, parameters, workflows, and examples are in
+[command.md](./command.md). To list the commands locally, run:
 
 ```bash
 npm run cli -- --help
-npm run cli -- balance list --chain 11142220
-npm run cli -- deposit list --chain 11142220
 ```
-
-Deposit, withdrawal, and refund use separate `prepare` and `execute` commands.
-Preparation moves no funds. Review the returned operation before executing it
-with explicit confirmation.
 
 ### 5. Build and test
 
@@ -143,10 +130,6 @@ Prepared and executed operation records are stored per account in:
 Use global `--account <EVM-or-TRON-address>` to override the saved default for
 one command. `PACT_PRIVACY_ACCOUNT` provides a process-level default, while an
 explicit `--env <path>` runs as a standalone profile.
-
-## CLI
-
-Learn [CLI Doc](./command.md) to use the full CLIs.
 
 ## Current tool
 
