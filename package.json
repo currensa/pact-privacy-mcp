@@ -1,0 +1,43 @@
+{
+  "name": "@pactpay/mcp-server",
+  "version": "0.4.0",
+  "description": "PactPay MCP server for organizations, plans, balances, and API keys",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pactpay-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "node --watch --loader ts-node/esm src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "circomlibjs": "^0.1.7",
+    "ethers": "^6.17.0",
+    "snarkjs": "^0.7.6",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pactpay",
+    "api-keys",
+    "openai"
+  ]
+}
