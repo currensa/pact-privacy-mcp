@@ -174,6 +174,9 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .action(invoke(executor, "relayed-withdraw.status", ["operationId"]));
 
   const refund = program.command("refund").description("Manage private refunds");
+  chainOption(refund.command("list").description("List refundable deposits and their current amounts"))
+    .option("--leaf-index <index>", "filter by deposit leaf index")
+    .action(invoke(executor, "refund.list"));
   chainOption(refund.command("prepare").description("Prepare a private refund"))
     .requiredOption("--leaf-index <index>", "deposit leaf index")
     .action(invoke(executor, "refund.prepare"));
@@ -199,24 +202,6 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .description("Refresh and show a relayed refund")
     .argument("<operation-id>")
     .action(invoke(executor, "relayed-refund.status", ["operationId"]));
-
-  const defi = program.command("defi").description("Manage EVM-only private DeFi withdrawals");
-  chainOption(defi.command("prepare").description("Prepare an EVM DeFi withdrawal"))
-    .requiredOption("--allocation <id>", "allocation ID")
-    .requiredOption("--amount <amount>", "decimal input amount")
-    .requiredOption("--protocol <protocol>", "configured DeFi protocol")
-    .requiredOption("--output-token <token>", "output token symbol or address")
-    .requiredOption("--min-output <amount>", "minimum decimal output amount")
-    .option("--to <address>", "public output recipient")
-    .option("--receiver <address:amount>", "private redeposit receiver; repeatable", collect, [])
-    .option("--private-redeposit", "privately redeposit the output")
-    .option("--refund", "include refund support for the private redeposit")
-    .action(invoke(executor, "defi.prepare"));
-  defi.command("execute")
-    .description("Execute a prepared EVM DeFi withdrawal")
-    .argument("<operation-id>")
-    .option("--confirm", "confirm execution")
-    .action(invoke(executor, "defi.execute", ["operationId"]));
 
   const operation = program.command("operation").description("Inspect and recover durable operations");
   operation.command("status")

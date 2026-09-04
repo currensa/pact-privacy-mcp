@@ -58,6 +58,17 @@ test("parses refund preparation by deposit leaf", async () => {
   assert.equal(result.options.leafIndex, "42");
 });
 
+test("parses read-only refundable deposit listing", async () => {
+  const all = await parse(["refund", "list", "--chain", "11142220"]);
+  assert.equal(all.command, "refund.list");
+  assert.equal(all.options.chain, "11142220");
+  assert.equal(all.options.leafIndex, undefined);
+
+  const selected = await parse(["refund", "list", "--chain", "11142220", "--leaf-index", "42"]);
+  assert.equal(selected.command, "refund.list");
+  assert.equal(selected.options.leafIndex, "42");
+});
+
 test("parses relayed withdrawal quote limits and recipient", async () => {
   const result = await parse([
     "relayed-withdraw", "prepare", "--chain", "11142220", "--allocation", "735",
@@ -88,15 +99,4 @@ test("parses relayed refund recipient and optional fee limit", async () => {
   assert.equal(result.options.leafIndex, "42");
   assert.equal(result.options.refunder, "0x1111111111111111111111111111111111111111");
   assert.equal(result.options.maxFee, "0.50");
-});
-
-test("parses EVM DeFi private redeposit inputs", async () => {
-  const result = await parse([
-    "defi", "prepare", "--chain", "11142220", "--allocation", "735", "--amount", "100",
-    "--protocol", "uniswap-v3", "--output-token", "USDC", "--min-output", "99",
-    "--receiver", "0xAlice:60", "--receiver", "0xBob:39", "--private-redeposit", "--refund",
-  ]);
-  assert.equal(result.command, "defi.prepare");
-  assert.deepEqual(result.options.receiver, ["0xAlice:60", "0xBob:39"]);
-  assert.equal(result.options.privateRedeposit, true);
 });

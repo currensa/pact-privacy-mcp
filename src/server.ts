@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
+import type { McpAccountSelection } from "./accounts/mcp.js";
+import { registerWorkflowTools } from "./mcp/tools.js";
 
 const echoInputSchema = z.object({
   message: z.string().min(1).describe("The text to return unchanged."),
@@ -9,7 +11,13 @@ const echoOutputSchema = z.object({
   message: z.string(),
 });
 
-export function createServer(options: { accountAddress?: string; allowedAccountAddresses?: string[] } = {}): McpServer {
+export function createServer(options: {
+  accounts?: McpAccountSelection;
+  accountAddress?: string;
+  allowedAccountAddresses?: string[];
+} = {}): McpServer {
+  const accountAddress = options.accounts?.selected.address ?? options.accountAddress;
+  const allowedAccountAddresses = options.accounts ? [...options.accounts.allowedAddresses] : options.allowedAccountAddresses;
   const server = new McpServer(
     {
       name: "pact-privacy-mcp",
@@ -17,7 +25,7 @@ export function createServer(options: { accountAddress?: string; allowedAccountA
     },
     {
       instructions:
-        `Use the echo tool to verify that this MCP server is connected and responding.${options.accountAddress ? ` The local account is ${options.accountAddress}; account access is restricted to ${options.allowedAccountAddresses?.join(", ") ?? options.accountAddress}.` : ""}`,
+        `Use read-only discovery tools before preparing a private operation. Preparation moves no funds; execution tools require confirm=true after reviewing the immutable operation.${accountAddress ? ` The startup account is ${accountAddress}; account access is restricted to ${allowedAccountAddresses?.join(", ") ?? accountAddress}.` : ""}`,
     },
   );
 
@@ -34,6 +42,8 @@ export function createServer(options: { accountAddress?: string; allowedAccountA
       structuredContent: { message },
     }),
   );
+
+  if (options.accounts) registerWorkflowTools(server, options.accounts);
 
   return server;
 }

@@ -73,9 +73,9 @@ npm run build
 
 ### 6. Configure the MCP server
 
-The payment MCP tools are not complete yet, but their protected profiles,
-API-key, circuit-cache, and build preparation are the same as the CLI steps
-above. After building, register the compiled stdio entry point:
+The MCP server uses the same protected profiles, API-key, circuit cache,
+workflow services, and durable operations as the CLI. After building, register
+the compiled stdio entry point:
 
 ```bash
 codex mcp add pact-privacy -- node /absolute/path/to/pact-privacy-mcp/dist/src/index.js
@@ -89,8 +89,11 @@ claude mcp add --transport stdio pact-privacy -- node /absolute/path/to/pact-pri
 claude mcp list
 ```
 
-The current MCP server exposes only the connectivity test tool. Restart the MCP
-client after rebuilding or changing its configuration.
+The MCP exposes account, chain, token, receiver, balance, allowance,
+transaction, deposit, allocation, withdrawal, refund, relayed-operation, and
+operation-recovery tools. Immediate public writes and prepared-operation
+execution require an explicit `confirm: true`. Restart the MCP client after
+rebuilding or changing its configuration.
 
 MCP uses the saved default account. Set `PACT_PRIVACY_MCP_ACCOUNTS` to a
 comma-separated startup allowlist before enabling future fund-moving tools; the
@@ -131,16 +134,5 @@ Use global `--account <EVM-or-TRON-address>` to override the saved default for
 one command. `PACT_PRIVACY_ACCOUNT` provides a process-level default, while an
 explicit `--env <path>` runs as a standalone profile.
 
-## Current tool
-
-### `echo`
-
-Input:
-
-```json
-{
-  "message": "hello, MCP"
-}
-```
-
-The tool returns the same value as both text content and structured content.
+The `echo` tool remains available as a connection check. Interactive account
+onboarding, migration, key rotation, and credential removal remain CLI-only.

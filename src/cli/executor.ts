@@ -12,6 +12,7 @@ import { WithdrawPreparationService } from "../withdraw/prepare.js";
 import { WithdrawExecutionService } from "../withdraw/execute.js";
 import { RefundPreparationService } from "../refund/prepare.js";
 import { RefundExecutionService } from "../refund/execute.js";
+import { RefundDiscoveryService } from "../refund/list.js";
 import { RelayedWithdrawPreparationService } from "../relayed-withdraw/prepare.js";
 import { RelayedWithdrawExecutionService } from "../relayed-withdraw/execute.js";
 import { RelayedRefundPreparationService } from "../relayed-refund/prepare.js";
@@ -411,6 +412,16 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         output(await new RefundPreparationService(client, operations).prepare({
           chainId,
           leafIndex: integerOption(invocation.options, "leafIndex", true)!,
+        }));
+        return;
+      }
+      case "refund.list": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        output(await new RefundDiscoveryService(client).list({
+          chainId,
+          ...(stringOption(invocation.options, "leafIndex") !== undefined
+            ? { leafIndex: integerOption(invocation.options, "leafIndex", true)! }
+            : {}),
         }));
         return;
       }

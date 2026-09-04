@@ -40,6 +40,7 @@ The tables below describe the purpose of each command. Detailed examples follow.
 | `allowance get` | Read an ERC-20 or TRC-20 allowance. |
 | `transaction status` | Check whether a transaction is pending, confirmed, failed, or unavailable. |
 | `deposit list` | List deposits already submitted and indexed for the local account; this does not list prepared operations. |
+| `refund list` | Decrypt refund-enabled deposits locally and show their current allocated, withdrawn, and refundable amounts without creating an operation. |
 | `allocation list` | Decrypt and list incoming receiver allocations. An allocation ID identifies one encrypted receiver message and is used by withdrawal commands. |
 | `token approve` | Approve a configured contract to spend a token after confirmation. |
 | `transfer native` | Transfer the chain's native currency after confirmation. |
@@ -92,7 +93,7 @@ Discovery and basic Web3 parameters:
 | `--amount <amount>` | Approval, transfer, and withdraw commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
 | `--to <address>` | Transfer commands | Public recipient address in the selected chain family. |
 | `--hash <hash>` | `transaction status` | EVM transaction hash or TRON transaction ID. |
-| `--leaf-index <index>` | `deposit list`, `refund prepare`, `relayed-refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
+| `--leaf-index <index>` | `deposit list`, `refund list`, `refund prepare`, `relayed-refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
 | `--unwithdrawn` | `allocation list` | Return only allocations with a positive remaining amount that have not been refunded. |
 
 Private-workflow parameters:
@@ -319,8 +320,19 @@ status` until the relayer reports a confirmed or failed transaction.
 
 ## Refund
 
-Select an owned deposit by leaf index, preview the refundable result, and
-execute:
+List every currently refundable deposit and its latest on-chain amount without
+creating an operation. Optionally select one leaf:
+
+```bash
+pactpay refund list --chain 11142220
+pactpay refund list --chain 11142220 --leaf-index 42
+```
+
+The result shows raw base-unit and human-readable allocated, withdrawn, and
+refundable amounts. It does not expose ciphertext, nullifiers, secret hashes,
+or refund entries.
+
+Prepare the selected leaf, review the resulting operation, and execute:
 
 ```bash
 pactpay refund prepare --chain 11142220 --leaf-index 42
