@@ -40,6 +40,15 @@ test("parses execute and recovery operation IDs", async () => {
   assert.deepEqual(resume.arguments, ["op_123"]);
 });
 
+test("parses a direct withdrawal recipient", async () => {
+  const result = await parse([
+    "withdraw", "prepare", "--chain", "11155111", "--allocation", "15", "--all",
+    "--recipient", "0xdbC13E144ecd4f156fB988B4a8dFF79597002BF5",
+  ]);
+  assert.equal(result.command, "withdraw.prepare");
+  assert.equal(result.options.recipient, "0xdbC13E144ecd4f156fB988B4a8dFF79597002BF5");
+});
+
 test("parses account management and all-account operation listing", async () => {
   const use = await parse(["account", "use", "TAccount"]);
   assert.equal(use.command, "account.use");
@@ -99,4 +108,53 @@ test("parses relayed refund recipient and optional fee limit", async () => {
   assert.equal(result.options.leafIndex, "42");
   assert.equal(result.options.refunder, "0x1111111111111111111111111111111111111111");
   assert.equal(result.options.maxFee, "0.50");
+});
+
+test("parses direct and relayed DeFi workflows", async () => {
+  const quote = await parse([
+    "defi", "quote", "--chain", "3448148188", "--input-token", "TRX", "--amount", "100",
+    "--protocol", "sunswap-v4", "--output-token", "USDT", "--slippage-bps", "100",
+  ]);
+  assert.equal(quote.command, "defi.quote");
+  assert.equal(quote.options.inputToken, "TRX");
+  assert.equal(quote.options.slippageBps, "100");
+
+  const direct = await parse([
+    "defi", "prepare", "--chain", "11142220", "--allocation", "735", "--amount", "100",
+    "--protocol", "mock-swap", "--output-token", "MCK", "--min-output", "99", "--to",
+    "0x1111111111111111111111111111111111111111",
+  ]);
+  assert.equal(direct.command, "defi.prepare");
+  assert.equal(direct.options.slippageBps, "50");
+
+  const uniswap = await parse([
+    "defi", "prepare", "--chain", "11155111", "--allocation", "736", "--amount", "50",
+    "--protocol", "uniswap-v3", "--output-token", "WETH", "--min-output", "0.001",
+    "--receiver", "0x1111111111111111111111111111111111111111:0.001", "--private-redeposit",
+    "--excess-recipient", "0x2222222222222222222222222222222222222222",
+  ]);
+  assert.equal(uniswap.command, "defi.prepare");
+  assert.equal(uniswap.options.privateRedeposit, true);
+  assert.equal(uniswap.options.excessRecipient, "0x2222222222222222222222222222222222222222");
+
+  const relayed = await parse([
+    "relayed-defi", "prepare", "--chain", "3448148188", "--allocation", "9", "--withdraw-all",
+    "--protocol", "sunswap-v4", "--output-token", "USDT", "--min-output", "9", "--to",
+    "TReceiver", "--max-fee", "2", "--relayer", "http://localhost:9000",
+  ]);
+  assert.equal(relayed.command, "relayed-defi.prepare");
+  assert.equal(relayed.options.withdrawAll, true);
+  assert.equal(relayed.options.withdrawAmount, undefined);
+  assert.equal(relayed.options.maxFee, "2");
+  assert.equal(relayed.options.privateRedeposit, undefined);
+
+  const relayedQuote = await parse([
+    "relayed-defi", "quote", "--chain", "3448148188", "--tier", "8", "--input-token", "TRX",
+    "--withdraw-amount", "100", "--protocol", "sunswap-v4", "--output-token", "USDT",
+    "--redeposit-tier", "16", "--relayer", "http://localhost:9000",
+  ]);
+  assert.equal(relayedQuote.command, "relayed-defi.quote");
+  assert.equal(relayedQuote.options.withdrawAmount, "100");
+  assert.equal(relayedQuote.options.tier, "8");
+  assert.equal(relayedQuote.options.redepositTier, "16");
 });

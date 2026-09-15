@@ -1,4 +1,5 @@
 import { normalizeAddress } from "../chain/address.js";
+import type { ChainFamily } from "../core/types.js";
 import type { CircuitTier } from "../proof/artifact-cache.js";
 import { poseidonHash } from "../proof/poseidon.js";
 import { OperationService } from "../operations/service.js";
@@ -9,10 +10,22 @@ import type { WithdrawPlan } from "./types.js";
 
 const TIERS = new Set([8, 16, 32, 64, 128]);
 
+export function directWithdrawParties(
+  signerAddress: string,
+  recipient: string | undefined,
+  family: ChainFamily,
+): { recipient: `0x${string}`; relayer: `0x${string}` } {
+  const relayer = normalizeAddress(signerAddress, family);
+  return {
+    recipient: normalizeAddress(recipient ?? relayer, family),
+    relayer,
+  };
+}
+
 export class WithdrawPreparationService {
   constructor(private readonly client: PactPrivacyClient, private readonly operations = new OperationService()) {}
 
-  async prepare(input: { chainId: number; allocationId: number; amount?: string; all: boolean }) {
+  async prepare(input: { chainId: number; allocationId: number; amount?: string; all: boolean; recipient?: string }) {
     if (input.all === (input.amount !== undefined)) throw new Error("Choose exactly one of --amount or --all");
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");
@@ -38,7 +51,11 @@ export class WithdrawPreparationService {
     const expectedAmount = input.all ? remaining : web3.parseTokenAmount(input.amount!, decimals);
     if (expectedAmount <= 0n || expectedAmount > remaining) throw new Error("Withdrawal amount exceeds the remaining allocation");
     const fee = (expectedAmount + 999n) / 1000n;
-    const recipient = normalizeAddress(this.client.signer.address(config.family), config.family);
+    const { recipient, relayer } = directWithdrawParties(
+      this.client.signer.address(config.family),
+      input.recipient,
+      config.family,
+    );
     const plan: WithdrawPlan = {
       allocationId: input.allocationId,
       leafIndex: info.leafIndex,
@@ -53,7 +70,7 @@ export class WithdrawPreparationService {
       fee: fee.toString(),
       netAmount: (expectedAmount - fee).toString(),
       recipient,
-      relayer: recipient,
+      relayer,
       expectedTransactions: ["withdraw"],
     };
     return this.operations.prepare("withdraw", input.chainId, plan);

@@ -17,7 +17,13 @@ export type ChainDetails = ChainSummary & {
   erc20Tokens: { symbol: string; name: string; address: CanonicalAddress }[];
   pureRouter?: CanonicalAddress;
   pactPrivacyDefiRouter?: CanonicalAddress;
-  defiProtocols: { name: string; address: CanonicalAddress }[];
+  defiProtocols: Array<{
+    name: string;
+    type?: string;
+    outputBehavior?: "fixed" | "variable";
+    address: CanonicalAddress;
+    "help-contracts"?: Record<string, CanonicalAddress>;
+  }>;
 };
 
 export type AccountRecord = {

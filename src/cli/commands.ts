@@ -32,6 +32,11 @@ function chainOption(command: Command): Command {
 }
 
 export function registerWorkflowCommands(program: Command, executor: CliExecutor): void {
+  program.command("relayer").description("Inspect a relayer")
+    .command("status").description("Read relayer availability and fee estimates")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayer.status"));
+
   const account = program.command("account").description("Manage local Pact Privacy accounts");
   account.command("add")
     .description("Generate or import and register another account")
@@ -147,6 +152,7 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .requiredOption("--allocation <id>", "allocation ID")
     .option("--amount <amount>", "decimal amount")
     .option("--all", "withdraw all remaining funds")
+    .option("--recipient <address>", "public recipient of the net withdrawal; defaults to the local signer")
     .action(invoke(executor, "withdraw.prepare"));
   withdraw.command("execute")
     .description("Execute a prepared private withdrawal")
@@ -202,6 +208,68 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .description("Refresh and show a relayed refund")
     .argument("<operation-id>")
     .action(invoke(executor, "relayed-refund.status", ["operationId"]));
+
+  const defi = program.command("defi").description("Route a private allocation through a configured DeFi protocol");
+  chainOption(defi.command("quote").description("Estimate DeFi output without preparing an operation"))
+    .requiredOption("--input-token <token>", "configured input token")
+    .requiredOption("--amount <amount>", "input-token amount routed through DeFi")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .action(invoke(executor, "defi.quote"));
+  chainOption(defi.command("prepare").description("Prepare a direct private DeFi operation"))
+    .requiredOption("--allocation <id>", "allocation ID")
+    .option("--amount <amount>", "input-token amount routed through DeFi")
+    .option("--all", "use the remaining allocation; mutually exclusive with --amount")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .requiredOption("--min-output <amount>", "minimum acceptable output-token amount")
+    .option("--to <address>", "public output recipient")
+    .option("--receiver <address:amount>", "private re-deposit receiver; repeatable", collect, [])
+    .option("--receivers <csv-path>", "private re-deposit CSV containing address,amount rows")
+    .option("--private-redeposit", "privately re-deposit output; unavailable on TRON")
+    .option("--excess-recipient <address>", "recipient of variable output above the private re-deposit total")
+    .option("--refund", "add refund support to the private re-deposit")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .action(invoke(executor, "defi.prepare"));
+  defi.command("execute").description("Execute a prepared direct DeFi operation")
+    .argument("<operation-id>").option("--confirm", "confirm execution")
+    .action(invoke(executor, "defi.execute", ["operationId"]));
+
+  const relayedDefi = program.command("relayed-defi").description("Manage relayer-submitted private DeFi operations");
+  chainOption(relayedDefi.command("quote").description("Estimate relayer fees and DeFi output without preparing an operation"))
+    .requiredOption("--tier <tier>", "withdrawal circuit tier")
+    .option("--redeposit-tier <tier>", "private re-deposit circuit tier; omit for public output")
+    .requiredOption("--input-token <token>", "configured input token")
+    .requiredOption("--withdraw-amount <amount>", "gross amount including the relayer fee")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-defi.quote"));
+  chainOption(relayedDefi.command("prepare").description("Prepare a relayed private DeFi operation"))
+    .requiredOption("--allocation <id>", "allocation ID")
+    .option("--withdraw-amount <amount>", "gross allocation amount including the relayer fee")
+    .option("--withdraw-all", "use the full remaining allocation including the relayer fee")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .requiredOption("--min-output <amount>", "minimum acceptable output-token amount")
+    .option("--to <address>", "public output recipient")
+    .option("--receiver <address:amount>", "private re-deposit receiver; repeatable", collect, [])
+    .option("--receivers <csv-path>", "private re-deposit CSV containing address,amount rows")
+    .option("--private-redeposit", "privately re-deposit output; unavailable on TRON")
+    .option("--excess-recipient <address>", "recipient of variable output above the private re-deposit total")
+    .option("--refund", "add refund support to the private re-deposit")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-defi.prepare"));
+  relayedDefi.command("execute").description("Execute a prepared relayed DeFi operation")
+    .argument("<operation-id>").option("--confirm", "confirm execution")
+    .action(invoke(executor, "relayed-defi.execute", ["operationId"]));
+  relayedDefi.command("status").description("Refresh and show a relayed DeFi operation")
+    .argument("<operation-id>").action(invoke(executor, "relayed-defi.status", ["operationId"]));
 
   const operation = program.command("operation").description("Inspect and recover durable operations");
   operation.command("status")

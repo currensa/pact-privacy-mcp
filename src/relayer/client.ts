@@ -1,12 +1,15 @@
 export type RelayerQuote = {
   id: string;
-  operation?: "withdraw" | "refund";
+  operation?: "withdraw" | "refund" | "defi";
   chainId: number;
   gravArc: string;
+  defiRouter?: string;
   relayer: string;
   token: string;
   amount: string;
   tier: number;
+  privateRedeposit?: boolean;
+  redepositTier?: number | null;
   networkFee: string;
   serviceFee: string;
   fee: string;
@@ -16,10 +19,11 @@ export type RelayerQuote = {
 
 export type WithdrawQuote = RelayerQuote;
 export type RefundQuote = RelayerQuote;
+export type DefiRelayQuote = RelayerQuote;
 
 export type RelayerOperation = {
   id: string;
-  operation?: "withdraw" | "refund";
+  operation?: "withdraw" | "refund" | "defi";
   chainId: number;
   state: "queued" | "simulating" | "signed" | "submitted" | "confirmed" | "failed";
   transactionHash: string | null;
@@ -79,8 +83,16 @@ export class RelayerClient {
     return this.request<WithdrawQuote>("/v1/withdraw/quote", { method: "POST", body: JSON.stringify(input) });
   }
 
+  status(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("/status", { signal: AbortSignal.timeout(30_000) });
+  }
+
   quoteRefund(input: { chainId: number; token: string; amount: string; tier: number }): Promise<RefundQuote> {
     return this.request<RefundQuote>("/v1/refund/quote", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  quoteDefi(input: { chainId: number; token: string; amount: string; tier: number; privateRedeposit?: boolean; redepositTier?: number }): Promise<DefiRelayQuote> {
+    return this.request<DefiRelayQuote>("/v1/defi/quote", { method: "POST", body: JSON.stringify(input) });
   }
 
   submitRefund(input: { chainId: number; quoteId: string; calldata: string }): Promise<RelayerOperation> {
@@ -89,6 +101,10 @@ export class RelayerClient {
 
   submitWithdraw(input: { chainId: number; quoteId: string; calldata: string }): Promise<RelayerOperation> {
     return this.request<RelayerOperation>("/v1/withdraw", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  submitDefi(input: { chainId: number; quoteId: string; calldata: string }): Promise<RelayerOperation> {
+    return this.request<RelayerOperation>("/v1/defi", { method: "POST", body: JSON.stringify(input) });
   }
 
   operation(id: string): Promise<RelayerOperation> {

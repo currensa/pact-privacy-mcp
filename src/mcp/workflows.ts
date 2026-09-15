@@ -14,6 +14,8 @@ import { RefundPreparationService } from "../refund/prepare.js";
 import { RefundExecutionService } from "../refund/execute.js";
 import { RelayedWithdrawExecutionService } from "../relayed-withdraw/execute.js";
 import { RelayedRefundExecutionService } from "../relayed-refund/execute.js";
+import { DefiExecutionService } from "../defi/execute.js";
+import { RelayedDefiExecutionService } from "../relayed-defi/execute.js";
 
 type Services = {
   context: AccountContext;
@@ -67,6 +69,8 @@ export class McpWorkflows {
     if (operation.kind === "refund") return new RefundExecutionService(client, operations).execute(operation.id);
     if (operation.kind === "relayed-withdraw") return new RelayedWithdrawExecutionService(client, operations).execute(operation.id);
     if (operation.kind === "relayed-refund") return new RelayedRefundExecutionService(client, operations).execute(operation.id);
+    if (operation.kind === "defi") return new DefiExecutionService(client, operations).execute(operation.id);
+    if (operation.kind === "relayed-defi") return new RelayedDefiExecutionService(client, operations).execute(operation.id);
     throw new Error(`Operation kind is not implemented: ${operation.kind}`);
   }
 
@@ -97,6 +101,7 @@ export class McpWorkflows {
     allocationId: number;
     amount?: string;
     all: boolean;
+    recipient?: string;
   }) {
     return new WithdrawPreparationService(client, operations).prepare(input);
   }

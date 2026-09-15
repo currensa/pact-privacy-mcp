@@ -90,7 +90,7 @@ claude mcp list
 ```
 
 The MCP exposes account, chain, token, receiver, balance, allowance,
-transaction, deposit, allocation, withdrawal, refund, relayed-operation, and
+transaction, deposit, allocation, withdrawal, refund, DeFi quoting/execution, relayed-operation, and
 operation-recovery tools. Immediate public writes and prepared-operation
 execution require an explicit `confirm: true`. Restart the MCP client after
 rebuilding or changing its configuration.

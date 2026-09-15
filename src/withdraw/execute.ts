@@ -98,7 +98,7 @@ export class WithdrawExecutionService {
       || token !== plan.token
     ) throw new Error("Encrypted allocation no longer matches the prepared withdrawal");
     const localAddress = normalizeAddress(this.client.signer.address(selected.config.family), selected.config.family);
-    if (localAddress !== plan.recipient || localAddress !== plan.relayer) throw new Error("Prepared withdrawal is for a different local signer");
+    if (localAddress !== plan.relayer) throw new Error("Prepared withdrawal fee recipient is a different local signer");
     const nullifierHashValue = await poseidonHash([BigInt(info.nullifier)]);
     const state = await new Web3Service(selected.config, selected.runtime).claimedState(
       `0x${nullifierHashValue.toString(16).padStart(64, "0")}`,

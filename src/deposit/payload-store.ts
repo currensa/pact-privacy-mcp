@@ -5,7 +5,7 @@ import { defaultOperationDirectory } from "../operations/store.js";
 import type { ChainFamily } from "../core/types.js";
 
 export type StoredSignedTransaction = {
-  purpose: "approval" | "deposit" | "withdraw" | "refund";
+  purpose: "approval" | "deposit" | "withdraw" | "refund" | "defi";
   family: ChainFamily;
   hash: string;
   raw: string | Record<string, unknown>;

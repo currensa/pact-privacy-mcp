@@ -66,3 +66,18 @@ export const GRAVARC_REFUND_ABI = [{
     ],
   }],
 }] as const;
+
+export const PACT_PRIVACY_DEFI_ROUTER_ABI = [{
+  type: "function", name: "defiRouting", stateMutability: "nonpayable", outputs: [],
+  inputs: [
+    { name: "withdrawProof", type: "tuple", components: GRAVARC_WITHDRAW_ABI[0].inputs[0].components },
+    { name: "defiData", type: "tuple", components: [
+      { name: "defiFee", type: "uint256" },
+      { name: "defiCalls", type: "tuple[]", components: [
+        { name: "target", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "data", type: "bytes" },
+      ] },
+    ] },
+  ],
+}] as const;

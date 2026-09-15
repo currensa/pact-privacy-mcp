@@ -8,6 +8,16 @@ import type { PactPrivacyBackend } from "../src/backend/client.js";
 import type { LocalProofService } from "../src/proof/prover.js";
 import { WithdrawPayloadStore } from "../src/withdraw/payload-store.js";
 import { WithdrawProofService } from "../src/withdraw/proof.js";
+import { directWithdrawParties } from "../src/withdraw/prepare.js";
+
+test("keeps the direct withdrawal fee with the signer while allowing another recipient", () => {
+  const signer = "0xdd7c3b6da39458acfc9893a94e467161c993b9b7";
+  const recipient = "0xdbC13E144ecd4f156fB988B4a8dFF79597002BF5";
+  const parties = directWithdrawParties(signer, recipient, "evm");
+  assert.equal(parties.relayer, signer);
+  assert.equal(parties.recipient, "0xdbc13e144ecd4f156fb988b4a8dff79597002bf5");
+  assert.deepEqual(directWithdrawParties(signer, undefined, "evm"), { recipient: signer, relayer: signer });
+});
 
 test("builds a withdrawal proof locally from a verified fresh membership path", async () => {
   const poseidon = await buildPoseidon() as ((values: bigint[]) => unknown) & { F: { toObject(value: unknown): bigint } };

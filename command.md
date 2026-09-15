@@ -39,6 +39,7 @@ The tables below describe the purpose of each command. Detailed examples follow.
 | `balance get` | Read one native or token balance. |
 | `allowance get` | Read an ERC-20 or TRC-20 allowance. |
 | `transaction status` | Check whether a transaction is pending, confirmed, failed, or unavailable. |
+| `relayer status` | Read relayer availability, supported chains/tokens/operations, addresses, and fee estimates. No account is required. |
 | `deposit list` | List deposits already submitted and indexed for the local account; this does not list prepared operations. |
 | `refund list` | Decrypt refund-enabled deposits locally and show their current allocated, withdrawn, and refundable amounts without creating an operation. |
 | `allocation list` | Decrypt and list incoming receiver allocations. An allocation ID identifies one encrypted receiver message and is used by withdrawal commands. |
@@ -62,6 +63,13 @@ Private workflows use an immutable preparation followed by explicit execution:
 | `relayed-refund prepare` | Refresh refundable state, cache the circuit, obtain a relayer quote, and bind the public refunder and fee limit. | Available |
 | `relayed-refund execute` | Generate proof-bound calldata locally and submit it to the quoted relayer without using the local key for gas. | Available |
 | `relayed-refund status` | Refresh the durable relayer operation and finish the backend refund update after confirmation. | Available |
+| `defi quote` | Estimate protocol output and the recommended minimum without generating a proof or creating an operation. | Available |
+| `defi prepare` | Quote a configured protocol and prepare a direct private withdrawal-to-DeFi operation. | Available |
+| `defi execute` | Refresh the quote, generate the proof locally, and submit the committed DeFi calls. | Available |
+| `relayed-defi quote` | Obtain an exact relayer fee quote, derive the swap input, and estimate protocol output without reading an allocation. | Available |
+| `relayed-defi prepare` | Prepare DeFi calls and lock the external relayer's fee in a short-lived quote. | Available |
+| `relayed-defi execute` | Generate proof-bound DeFi calldata locally and submit it to the quoted relayer. | Available |
+| `relayed-defi status` | Refresh the durable relayed DeFi operation and any private re-deposit delivery. | Available |
 
 | Recovery command | Description |
 | --- | --- |
@@ -90,7 +98,7 @@ Discovery and basic Web3 parameters:
 | `--token <token>` | Token, balance, allowance, deposit, and transfer commands | Configured token symbol or token contract address. `balance get` also accepts `native`. |
 | `--address <address>` | Receiver, balance, and allowance commands | Address to filter or inspect. Balance and allowance commands default to the local signer. |
 | `--spender <spender>` | Allowance and approval commands | Configured spender name such as `gravarc`, or a contract address. |
-| `--amount <amount>` | Approval, transfer, and withdraw commands | Human-readable decimal token amount, not base units. Token approval also accepts `unlimited`. |
+| `--amount <amount>` | Approval, transfer, withdraw, and direct DeFi commands | Human-readable decimal token amount, not base units. For direct DeFi it is the exact swap input. Token approval also accepts `unlimited`. |
 | `--to <address>` | Transfer commands | Public recipient address in the selected chain family. |
 | `--hash <hash>` | `transaction status` | EVM transaction hash or TRON transaction ID. |
 | `--leaf-index <index>` | `deposit list`, `refund list`, `refund prepare`, `relayed-refund prepare` | Non-negative deposit leaf index assigned by the on-chain deposit tree. |
@@ -100,15 +108,27 @@ Private-workflow parameters:
 
 | Parameter | Used by | Meaning |
 | --- | --- | --- |
-| `--receiver <address:amount>` | `deposit prepare` | One registered receiver and human-readable amount. Repeat the option for multiple receivers. |
-| `--receivers <csv-path>` | `deposit prepare` | Payroll CSV containing `address,amount` columns; rows are combined with repeated `--receiver` options. |
+| `--receiver <address:amount>` | Deposit or private-redeposit preparation | One registered receiver and human-readable amount. Repeat the option for multiple receivers. |
+| `--receivers <csv-path>` | Deposit or private-redeposit preparation | Payroll CSV containing `address,amount` columns; rows are combined with repeated `--receiver` options. |
 | `--refund` | Deposit and private-redeposit preparation | Include encrypted depositor data required for a later refund. It does not execute a refund. |
-| `--allocation <id>` | `withdraw prepare` | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
-| `--all` | Withdrawal preparation | Withdraw the allocation's full current remaining amount. It cannot be combined with `--amount`. |
-| `--recipient <address>` | `relayed-withdraw prepare` | Public chain-family address that receives the withdrawn amount after the relayer fee. |
+| `--allocation <id>` | Withdraw or DeFi preparation | Backend message ID returned by `allocation list`. It selects one encrypted receiver allocation without exposing its nullifier. |
+| `--all` | Withdrawal and direct DeFi preparation | Use the allocation's current remaining amount. Mutually exclusive with `--amount`. |
+| `--input-token <token>` | DeFi quote | Configured input-token symbol or address; required because quotes do not read an allocation. |
+| `--tier <tier>` | `relayed-defi quote` | Withdrawal circuit tier (`8`, `16`, `32`, `64`, or `128`) used to price relay execution. |
+| `--redeposit-tier <tier>` | `relayed-defi quote` | Optional private re-deposit circuit tier used to include its additional gas. Omit it for public output; preparation derives it from receiver count. |
+| `--withdraw-amount <amount>` | Relayed DeFi quote/preparation | Gross private withdrawal budget, including the relayer fee. |
+| `--withdraw-all` | Relayed DeFi preparation | Use the allocation's full remaining amount as the gross budget; mutually exclusive with `--withdraw-amount`. |
+| `--recipient <address>` | `withdraw prepare`, `relayed-withdraw prepare` | Public chain-family address that receives the withdrawn amount after the fee. Direct withdrawal defaults to the local signer. |
 | `--refunder <address>` | `relayed-refund prepare` | Public chain-family address that receives the refund after the relayer fee. |
-| `--max-fee <amount>` | Relayed preparation | Optional maximum human-readable token fee. When omitted, the relayer's exact quoted fee is accepted. |
-| `--relayer <url>` | Relayed preparation | HTTP(S) base URL of the selected relayer. |
+| `--max-fee <amount>` | Relayed quote/preparation | Optional maximum human-readable token fee. When omitted, the relayer's exact quoted fee is accepted. |
+| `--relayer <url>` | Relayed quote/preparation and `relayer status` | HTTP(S) base URL of the selected relayer. |
+| `--protocol <protocol>` | DeFi quote and preparation | Configured protocol name, type, or contract address. |
+| `--output-token <token>` | DeFi quote and preparation | Configured output-token symbol or address. |
+| `--min-output <amount>` | DeFi preparation | Minimum acceptable human-readable output amount; execution fails if a refreshed quote falls below it. |
+| `--to <address>` | DeFi preparation | Public output recipient; mutually exclusive with `--private-redeposit`. |
+| `--private-redeposit` | Direct and relayed DeFi preparation | Deposit output privately to the supplied receivers. This is available on EVM chains and unavailable on TRON. |
+| `--excess-recipient <address>` | Variable-output private re-deposit | Public address that receives swap output above the fixed private re-deposit total. Required for Uniswap V3 private re-deposit. |
+| `--slippage-bps <bps>` | DeFi quote and preparation | Quote slippage in basis points; defaults to 50 (0.5%). |
 | `<operation-id>` | Execute, status, cancel, and resume commands | Local durable ID returned by a preparation, such as `op_01J...`. It is not a transaction hash. |
 
 Recovery filtering:
@@ -282,13 +302,16 @@ Select an allocation returned by `allocation list`, prepare a partial or full
 withdrawal, then execute it:
 
 ```bash
-pactpay withdraw prepare --chain 11142220 --allocation 735 --amount 250.00
+pactpay withdraw prepare --chain 11142220 --allocation 735 --amount 250.00 \
+  --recipient 0xReceiver...
 pactpay withdraw prepare --chain 3448148188 --allocation 912 --all
 pactpay withdraw execute op_01J... --confirm
 ```
 
 The CLI decrypts locally, fetches a fresh membership path and claimed state,
-and generates a fresh proof only during execution.
+and generates a fresh proof only during execution. For a direct withdrawal,
+the local signer submits the transaction and receives the fee; `--recipient`
+receives the net withdrawal and defaults to the signer when omitted.
 
 ## Relayed private withdrawal
 
@@ -346,6 +369,16 @@ the transaction is confirmed. The same commands apply to TRON chains.
 
 ### Relayed refund
 
+Inspect a relayer before preparing any relayed operation:
+
+```bash
+pactpay relayer status --relayer http://150.109.25.172:9000
+```
+
+The matching MCP tool is `relayer_status` with `relayerUrl`. Status returns fee
+estimates; preparation still obtains an exact, short-lived quote. This query
+requires no account credentials and creates no operation.
+
 ```bash
 pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
   --refunder 0xDepositor... --max-fee 0.50 \
@@ -358,6 +391,115 @@ Preparation refreshes every related claimed/refunded state before obtaining a
 short-lived quote. Execution generates proof-bound calldata locally. After the
 relayer confirms the transaction, the CLI marks the backend deposition
 refunded; `status` or `operation resume` safely retries only that update.
+
+## Private DeFi
+
+Use exactly one of `--amount` or `--all` for direct DeFi preparation. Direct
+DeFi treats either value as the swap input. Relayed preparation instead uses
+exactly one of `--withdraw-amount` or `--withdraw-all`; this is the gross private
+withdrawal budget, from which the exact relayer fee is deducted before swapping.
+Rounding may leave a tiny base-unit remainder. The relayer must support
+gross-budget DeFi quotes. Preparation freezes the resolved amounts; execution
+rechecks the allocation and does not increase them automatically.
+
+Inspect the current output estimate before selecting `--min-output`. This is
+read-only: it creates no operation, proof, relayer quote, or transaction:
+
+```bash
+pactpay defi quote --chain 11142220 --input-token USDC --amount 100.00 \
+  --protocol mock-swap --output-token MCK
+```
+
+Direct DeFi withdraws one allocation into `PactPrivacyDefiRouter`, commits the
+selected protocol calls in the withdrawal proof, and either sends the result
+to a public recipient or privately re-deposits it:
+
+```bash
+pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
+  --protocol mock-swap --output-token MCK --min-output 99.00 \
+  --to 0xReceiver...
+
+pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
+  --protocol mock-swap --output-token MCK --min-output 100.00 \
+  --receiver 0xAlice...:60.00 --receiver 0xBob...:40.00 \
+  --private-redeposit --refund
+
+pactpay defi execute op_01J... --confirm
+```
+
+On Ethereum Sepolia, Uniswap V3 supports ERC-20 pairs only. Use WETH rather
+than native ETH. A variable-output private re-deposit fixes the privately
+deposited amount and sends any additional swap output to the explicit excess
+recipient:
+
+```bash
+pactpay defi quote --chain 11155111 --input-token USDC --amount 50 \
+  --protocol uniswap-v3 --output-token WETH
+
+pactpay defi prepare --chain 11155111 --allocation 736 --amount 50 \
+  --protocol uniswap-v3 --output-token WETH --min-output 0.0013 \
+  --to 0xReceiver...
+
+pactpay defi prepare --chain 11155111 --allocation 736 --amount 50 \
+  --protocol uniswap-v3 --output-token WETH --min-output 0.0013 \
+  --receiver 0xReceiver...:0.0013 --private-redeposit \
+  --excess-recipient 0xExcessReceiver...
+```
+
+TRON supports public-output DeFi, such as SunSwap V4, but intentionally rejects
+`--private-redeposit` in both direct and relayed workflows:
+
+```bash
+pactpay defi prepare --chain 3448148188 --allocation 912 --amount 100 \
+  --protocol sunswap-v4 --output-token USDT --min-output 9.5 \
+  --to TReceiver...
+```
+
+Relayed quoting requests an exact, short-lived fee from the relayer, deducts it
+from `--withdraw-amount`, and quotes the protocol using the resulting swap
+input. It creates no local operation, proof, or transaction. The returned
+recommended minimum can be reviewed before preparation:
+
+```bash
+pactpay relayed-defi quote --chain 11142220 --tier 8 \
+  --input-token USDC --withdraw-amount 100.00 \
+  --protocol mock-swap --output-token MCK \
+  --relayer http://localhost:9000
+```
+
+Preparation repeats the short-lived quote and safely rejects a `--min-output`
+that the refreshed protocol quote cannot satisfy. The fee is paid by
+`PactPrivacyDefiRouter` only after the committed calls succeed. `--max-fee` is
+optional:
+
+```bash
+pactpay relayed-defi prepare --chain 11142220 --allocation 735 --withdraw-amount 100.00 \
+  --protocol mock-swap --output-token MCK --min-output 99.00 \
+  --to 0xReceiver... --max-fee 0.25 --relayer http://localhost:9000
+pactpay relayed-defi execute op_01J... --confirm
+pactpay relayed-defi status op_01J...
+```
+
+Relayed DeFi also supports private re-deposit on EVM chains. For a
+variable-output protocol, the receiver amounts define the fixed private
+deposit and `--excess-recipient` receives any additional output. A standalone
+quote uses `--redeposit-tier`; preparation derives the same tier automatically
+from its receiver count:
+
+```bash
+pactpay relayed-defi quote --chain 11155111 --tier 8 --redeposit-tier 8 \
+  --input-token USDC --withdraw-amount 50 \
+  --protocol uniswap-v3 --output-token WETH \
+  --relayer http://localhost:9000
+
+pactpay relayed-defi prepare --chain 11155111 --allocation 736 \
+  --withdraw-amount 50 --protocol uniswap-v3 --output-token WETH \
+  --min-output 0.0013 --receiver 0xReceiver...:0.0013 \
+  --private-redeposit --excess-recipient 0xExcessReceiver... \
+  --relayer http://localhost:9000
+
+pactpay relayed-defi execute op_01J... --confirm
+```
 
 ## Recovery
 
@@ -380,52 +522,3 @@ must be reconciled with `status` or `resume`.
 
 `resume` must reconcile every known transaction hash before retrying and must
 never repeat a fund-moving transaction whose outcome is unknown.
-
-## Future work
-
-The commands in this section are designs only and are not implemented.
-
-### Milestone 2: DeFi and relayed DeFi
-
-DeFi will be EVM-only. Preparation will quote the protocol call and support a
-public output or a private redeposit:
-
-```bash
-pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
-  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
-  --to 0xReceiver...
-
-pactpay defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
-  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
-  --receiver 0xAlice...:60.00 --receiver 0xBob...:39.00 \
-  --private-redeposit --refund
-pactpay defi execute op_01J... --confirm
-```
-
-Its additional parameters will be `--protocol`, `--output-token`,
-`--min-output`, and `--private-redeposit`. Attempting it on TRON must fail
-before quoting or proof generation.
-
-#### Relayed DeFi
-
-Relayed DeFi remains EVM-only and keeps the normal DeFi routing parameters:
-
-```bash
-pactpay relayed-defi prepare --chain 11142220 --allocation 735 --amount 100.00 \
-  --protocol uniswap-v3 --output-token USDC --min-output 99.00 \
-  --to 0xReceiver... --fee 0.25 --relayer https://relayer.example
-pactpay relayed-defi execute op_01J... --confirm
-pactpay relayed-defi status op_01J...
-```
-
-Here `--fee` is the transaction relayer compensation included in the committed
-DeFi router data. Private redeposit should also support the normal repeatable
-`--receiver`, `--private-redeposit`, and `--refund` options.
-
-For the remaining relayed workflows, preparation should obtain a short-lived quote with the
-relayer's submitting address, fee, expiry, and supported chain. Execution should
-refresh mutable state, generate the proof locally, and send only the proof and
-public operation parameters to the relayer. The relayer must verify the proof
-and quote, sign and submit the transaction, and return its hash. Account secrets,
-nullifiers, private keys, and proof witnesses must never be sent. Durable status,
-quote expiry, and idempotency must prevent stale or duplicate submission.

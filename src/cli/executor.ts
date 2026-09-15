@@ -17,11 +17,18 @@ import { RelayedWithdrawPreparationService } from "../relayed-withdraw/prepare.j
 import { RelayedWithdrawExecutionService } from "../relayed-withdraw/execute.js";
 import { RelayedRefundPreparationService } from "../relayed-refund/prepare.js";
 import { RelayedRefundExecutionService } from "../relayed-refund/execute.js";
+import { DefiPreparationService } from "../defi/prepare.js";
+import { DefiExecutionService } from "../defi/execute.js";
+import { DefiQuoteService } from "../defi/quote.js";
+import { RelayedDefiPreparationService } from "../relayed-defi/prepare.js";
+import { RelayedDefiExecutionService } from "../relayed-defi/execute.js";
+import { RelayedDefiQuoteService } from "../relayed-defi/quote.js";
 import { AccountStore, accountOperationDirectory, profileFromEnvironment } from "../accounts/store.js";
 import { resolveAccountContext } from "../accounts/context.js";
 import { migrateLegacyAccount } from "../accounts/migration.js";
 import { OperationStore } from "../operations/store.js";
 import { OnboardingService } from "./onboarding.js";
+import { RelayerClient } from "../relayer/client.js";
 
 function stringOption(options: CliOptions, name: string, required = false): string | undefined {
   const value = options[name];
@@ -67,6 +74,10 @@ async function confirmed(options: CliOptions, prompter: Prompter, description: s
 
 export function createCliExecutor(prompter: Prompter): CliExecutor {
   return async (invocation: CliInvocation): Promise<void> => {
+    if (invocation.command === "relayer.status") {
+      output(await new RelayerClient(stringOption(invocation.options, "relayer", true)!).status());
+      return;
+    }
     const accountStore = new AccountStore();
     const operationId = invocation.arguments[0];
     if (invocation.command === "account.add") {
@@ -236,6 +247,14 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         output(await new RefundExecutionService(client, operations).execute(operation.id));
         return;
       }
+      if (operation.kind === "defi") {
+        output(await new DefiExecutionService(client, operations).execute(operation.id));
+        return;
+      }
+      if (operation.kind === "relayed-defi") {
+        output(await new RelayedDefiExecutionService(client, operations).execute(operation.id));
+        return;
+      }
       const selected = await client.chain(operation.chainId);
       const service = new Web3Service(selected.config, selected.runtime);
       const reconciled = await operations.reconcile(operation.id, async (transaction) => {
@@ -358,6 +377,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
           allocationId: integerOption(invocation.options, "allocation", true)!,
           ...(amount ? { amount } : {}),
           all: booleanOption(invocation.options, "all"),
+          ...(stringOption(invocation.options, "recipient") ? { recipient: stringOption(invocation.options, "recipient")! } : {}),
         }));
         return;
       }
@@ -466,6 +486,97 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         const operation = await accountOperation(operationId);
         if (operation.kind !== "relayed-refund") throw new Error(`Operation ${operationId} is not a relayed refund`);
         output(await new RelayedRefundExecutionService(client, operations).status(operationId));
+        return;
+      }
+      case "defi.quote": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        output(await new DefiQuoteService(client).quote({
+          chainId,
+          inputToken: stringOption(invocation.options, "inputToken", true)!,
+          amount: stringOption(invocation.options, "amount", true)!,
+          protocol: stringOption(invocation.options, "protocol", true)!,
+          outputToken: stringOption(invocation.options, "outputToken", true)!,
+          slippageBips: integerOption(invocation.options, "slippageBps", true)!,
+        }));
+        return;
+      }
+      case "relayed-defi.quote": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        const maximumFee = stringOption(invocation.options, "maxFee");
+        output(await new RelayedDefiQuoteService(client).quote({
+          chainId,
+          tier: integerOption(invocation.options, "tier", true)! as import("../proof/artifact-cache.js").CircuitTier,
+          ...(integerOption(invocation.options, "redepositTier") === undefined ? {} : {
+            redepositTier: integerOption(invocation.options, "redepositTier") as import("../proof/artifact-cache.js").CircuitTier,
+          }),
+          inputToken: stringOption(invocation.options, "inputToken", true)!,
+          outputToken: stringOption(invocation.options, "outputToken", true)!,
+          protocol: stringOption(invocation.options, "protocol", true)!,
+          withdrawalAmount: stringOption(invocation.options, "withdrawAmount", true)!,
+          relayerUrl: stringOption(invocation.options, "relayer", true)!,
+          ...(maximumFee ? { maximumFee } : {}),
+          slippageBips: integerOption(invocation.options, "slippageBps", true)!,
+        }));
+        return;
+      }
+      case "defi.prepare":
+      case "relayed-defi.prepare": {
+        if (chainId === undefined) throw new Error("--chain is required");
+        const privateRedeposit = booleanOption(invocation.options, "privateRedeposit");
+        const receiverValues = arrayOption(invocation.options, "receiver");
+        const csvPath = stringOption(invocation.options, "receivers");
+        const recipients = privateRedeposit || receiverValues.length > 0 || csvPath
+          ? await readDepositRecipients(receiverValues, csvPath ? resolve(csvPath) : undefined)
+          : [];
+        const common = {
+          chainId,
+          allocationId: integerOption(invocation.options, "allocation", true)!,
+          protocol: stringOption(invocation.options, "protocol", true)!,
+          outputToken: stringOption(invocation.options, "outputToken", true)!,
+          minimumOutput: stringOption(invocation.options, "minOutput", true)!,
+          ...(stringOption(invocation.options, "to") ? { destination: stringOption(invocation.options, "to")! } : {}),
+          ...(stringOption(invocation.options, "excessRecipient") ? { excessRecipient: stringOption(invocation.options, "excessRecipient")! } : {}),
+          recipients,
+          privateRedeposit,
+          refund: booleanOption(invocation.options, "refund"),
+          slippageBips: integerOption(invocation.options, "slippageBps", true)!,
+        };
+        if (invocation.command === "defi.prepare") {
+          output(await new DefiPreparationService(client, operations).prepare({
+            ...common, amount: stringOption(invocation.options, "amount"), all: booleanOption(invocation.options, "all"),
+          }));
+        } else {
+          const maximumFee = stringOption(invocation.options, "maxFee");
+          output(await new RelayedDefiPreparationService(client, operations).prepare({
+            ...common,
+            ...(stringOption(invocation.options, "withdrawAmount") ? { withdrawalAmount: stringOption(invocation.options, "withdrawAmount")! } : {}),
+            withdrawAll: booleanOption(invocation.options, "withdrawAll"),
+            ...(maximumFee ? { maximumFee } : {}), relayerUrl: stringOption(invocation.options, "relayer", true)!,
+          }));
+        }
+        return;
+      }
+      case "defi.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "defi") throw new Error(`Operation ${operationId} is not a DeFi operation`);
+        await confirmed(invocation.options, prompter, `Execute DeFi operation ${operation.id} on chain ${operation.chainId} for ${String(operation.plan.totalWithdrawal)} base units?`);
+        output(await new DefiExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "relayed-defi.execute": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-defi") throw new Error(`Operation ${operationId} is not a relayed DeFi operation`);
+        await confirmed(invocation.options, prompter, `Submit relayed DeFi operation ${operation.id} with fee ${String(operation.plan.defiFee)} base units?`);
+        output(await new RelayedDefiExecutionService(client, operations).execute(operationId));
+        return;
+      }
+      case "relayed-defi.status": {
+        if (!operationId) throw new Error("Operation ID is required");
+        const operation = await accountOperation(operationId);
+        if (operation.kind !== "relayed-defi") throw new Error(`Operation ${operationId} is not a relayed DeFi operation`);
+        output(await new RelayedDefiExecutionService(client, operations).status(operationId));
         return;
       }
       case "token.approve": {

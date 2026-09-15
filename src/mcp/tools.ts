@@ -11,6 +11,13 @@ import { RelayedWithdrawPreparationService } from "../relayed-withdraw/prepare.j
 import { RelayedWithdrawExecutionService } from "../relayed-withdraw/execute.js";
 import { RelayedRefundPreparationService } from "../relayed-refund/prepare.js";
 import { RelayedRefundExecutionService } from "../relayed-refund/execute.js";
+import { DefiPreparationService } from "../defi/prepare.js";
+import { DefiExecutionService } from "../defi/execute.js";
+import { DefiQuoteService } from "../defi/quote.js";
+import { RelayedDefiPreparationService } from "../relayed-defi/prepare.js";
+import { RelayedDefiExecutionService } from "../relayed-defi/execute.js";
+import { RelayedDefiQuoteService } from "../relayed-defi/quote.js";
+import { RelayerClient } from "../relayer/client.js";
 
 type Shape = Record<string, z.ZodType>;
 const resultSchema = z.object({ result: z.unknown() });
@@ -61,6 +68,10 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
 
   register("list_accounts", "List local accounts allowed for this MCP server.", {},
     () => workflows.listAccounts(), true);
+
+  register("relayer_status", "Read relayer availability, supported chains and operations, addresses, and estimated fees. Preparation still requires an exact quote.", {
+    relayerUrl: z.string().url(),
+  }, ({ relayerUrl }) => new RelayerClient(relayerUrl).status(), true);
 
   register("list_chains", "List Pact Privacy chains available to the local account.", { account: accountField },
     ({ account }) => workflows.run(account, async ({ client }) => workflows.discovery(client).chains()), true);
@@ -171,8 +182,12 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   register("prepare_withdraw", "Prepare a partial or full private withdrawal without submitting it.", {
     account: accountField, chainId: chainIdField, allocationId: z.number().int().nonnegative(),
     amount: z.string().min(1).optional(), all: z.boolean().default(false),
-  }, ({ account, chainId, allocationId, amount, all }) => workflows.run(account, async ({ client, operations }) => (
-    workflows.prepareWithdraw(client, operations, { chainId, allocationId, ...(amount ? { amount } : {}), all })
+    recipient: z.string().min(1).optional().describe("Public recipient of the net withdrawal; defaults to the local signer."),
+  }, ({ account, chainId, allocationId, amount, all, recipient }) => workflows.run(account, async ({ client, operations }) => (
+    workflows.prepareWithdraw(client, operations, {
+      chainId, allocationId, ...(amount ? { amount } : {}), all,
+      ...(recipient === undefined ? {} : { recipient }),
+    })
   )));
 
   register("execute_withdraw", "Execute a reviewed private withdrawal operation.", {
@@ -237,6 +252,109 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
     account: accountField, operationId: operationIdField,
   }, ({ account, operationId }) => workflows.run(account, async ({ client, operations }) => (
     new RelayedRefundExecutionService(client, operations).status(operationId)
+  )));
+
+  const defiQuoteFields = {
+    account: accountField,
+    chainId: chainIdField,
+    inputToken: z.string().min(1),
+    amount: z.string().min(1),
+    protocol: z.string().min(1),
+    outputToken: z.string().min(1),
+    slippageBips: z.number().int().min(0).max(9_999).default(50),
+  };
+
+  register("quote_defi", "Estimate DeFi output for an explicit input token and amount without reading an allocation or preparing an operation.", defiQuoteFields,
+    ({ account, ...input }) => workflows.run(account, async ({ client }) => new DefiQuoteService(client).quote(input)), true);
+
+  const defiFields = {
+    account: accountField,
+    chainId: chainIdField,
+    allocationId: z.number().int().nonnegative(),
+    amount: z.string().min(1).optional(),
+    all: z.boolean().default(false).describe("Use the allocation's full remaining amount; mutually exclusive with amount."),
+    protocol: z.string().min(1),
+    outputToken: z.string().min(1),
+    slippageBips: z.number().int().min(0).max(9_999).default(50),
+    minimumOutput: z.string().min(1),
+    destination: z.string().min(1).optional(),
+    excessRecipient: z.string().min(1).optional().describe("Receives variable swap output above the private re-deposit total."),
+    recipients: z.array(z.object({ address: z.string().min(1), amount: z.string().min(1) })).default([]),
+    privateRedeposit: z.boolean().default(false).describe("Unavailable on TRON"),
+    refund: z.boolean().default(false),
+  };
+
+  register("prepare_defi", "Quote and prepare a direct private DeFi operation without moving funds.", defiFields,
+    ({ account, destination, excessRecipient, ...input }) => workflows.run(account, async ({ client, operations }) => (
+      new DefiPreparationService(client, operations).prepare({
+        ...input, ...(destination === undefined ? {} : { destination }),
+        ...(excessRecipient === undefined ? {} : { excessRecipient }),
+      })
+    )));
+
+  register("execute_defi", "Execute a reviewed direct DeFi operation.", {
+    account: accountField, operationId: operationIdField, confirm: confirmationField,
+  }, ({ account, operationId }) => workflows.run(account, async ({ client, operations }) => (
+    new DefiExecutionService(client, operations).execute(operationId)
+  )));
+
+  register("quote_relayed_defi", "Obtain an exact relayer fee quote and estimate DeFi output from the resulting swap amount.", {
+    account: accountField,
+    chainId: chainIdField,
+    tier: z.union([z.literal(8), z.literal(16), z.literal(32), z.literal(64), z.literal(128)]),
+    redepositTier: z.union([z.literal(8), z.literal(16), z.literal(32), z.literal(64), z.literal(128)]).optional()
+      .describe("Private re-deposit circuit tier; omit for public output."),
+    inputToken: z.string().min(1),
+    outputToken: z.string().min(1),
+    protocol: z.string().min(1),
+    withdrawalAmount: z.string().min(1).describe("Gross amount including the relayer fee."),
+    maximumFee: z.string().min(1).optional(),
+    relayerUrl: z.string().url(),
+    slippageBips: z.number().int().min(0).max(9_999).default(50),
+  }, ({ account, maximumFee, redepositTier, ...input }) => workflows.run(account, async ({ client }) => (
+    new RelayedDefiQuoteService(client).quote({
+      ...input,
+      ...(maximumFee === undefined ? {} : { maximumFee }),
+      ...(redepositTier === undefined ? {} : { redepositTier }),
+    })
+  )), true);
+
+  register("prepare_relayed_defi", "Quote and prepare a relayer-submitted DeFi operation without moving funds.", {
+    account: accountField,
+    chainId: chainIdField,
+    allocationId: z.number().int().nonnegative(),
+    withdrawalAmount: z.string().min(1).optional().describe("Gross allocation amount including the relayer fee."),
+    withdrawAll: z.boolean().default(false).describe("Use the allocation's full remaining amount including the relayer fee."),
+    protocol: z.string().min(1),
+    outputToken: z.string().min(1),
+    slippageBips: z.number().int().min(0).max(9_999).default(50),
+    minimumOutput: z.string().min(1),
+    destination: z.string().min(1).optional(),
+    excessRecipient: z.string().min(1).optional().describe("Receives variable swap output above the private re-deposit total."),
+    recipients: z.array(z.object({ address: z.string().min(1), amount: z.string().min(1) })).default([]),
+    privateRedeposit: z.boolean().default(false).describe("Unavailable on TRON"),
+    refund: z.boolean().default(false),
+    maximumFee: z.string().min(1).optional(),
+    relayerUrl: z.string().url(),
+  }, ({ account, maximumFee, destination, excessRecipient, withdrawalAmount, ...input }) => workflows.run(account, async ({ client, operations }) => (
+    new RelayedDefiPreparationService(client, operations).prepare({
+      ...input, ...(withdrawalAmount === undefined ? {} : { withdrawalAmount }),
+      ...(destination === undefined ? {} : { destination }),
+      ...(excessRecipient === undefined ? {} : { excessRecipient }),
+      ...(maximumFee === undefined ? {} : { maximumFee }),
+    })
+  )));
+
+  register("execute_relayed_defi", "Execute a reviewed relayed DeFi operation.", {
+    account: accountField, operationId: operationIdField, confirm: confirmationField,
+  }, ({ account, operationId }) => workflows.run(account, async ({ client, operations }) => (
+    new RelayedDefiExecutionService(client, operations).execute(operationId)
+  )));
+
+  register("relayed_defi_status", "Refresh a relayed DeFi operation.", {
+    account: accountField, operationId: operationIdField,
+  }, ({ account, operationId }) => workflows.run(account, async ({ client, operations }) => (
+    new RelayedDefiExecutionService(client, operations).status(operationId)
   )));
 
   register("list_operations", "List durable local operations for one allowed account.", {
