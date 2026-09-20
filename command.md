@@ -455,6 +455,24 @@ pactpay defi prepare --chain 3448148188 --allocation 912 --amount 100 \
   --to TReceiver...
 ```
 
+Monad Testnet supports Kuru only through the configured one-hop MCK/MCK-2
+market. Native MON, unknown markets, multihop routes, and Kuru Flow programs
+are rejected. Both public output and EVM private re-deposit are available:
+
+```bash
+pactpay defi quote --chain 10143 --input-token MCK --amount 10 \
+  --protocol kuru --output-token MCK-2
+
+pactpay defi prepare --chain 10143 --allocation 913 --amount 10 \
+  --protocol kuru --output-token MCK-2 --min-output 9.5 \
+  --to 0xReceiver...
+
+pactpay defi prepare --chain 10143 --allocation 913 --amount 10 \
+  --protocol kuru --output-token MCK-2 --min-output 9.5 \
+  --receiver 0xReceiver...:9.5 --private-redeposit \
+  --excess-recipient 0xExcessReceiver...
+```
+
 Relayed quoting requests an exact, short-lived fee from the relayer, deducts it
 from `--withdraw-amount`, and quotes the protocol using the resulting swap
 input. It creates no local operation, proof, or transaction. The returned
