@@ -1,5 +1,6 @@
 import { normalizeAddress } from "../chain/address.js";
 import type { ChainDetails } from "../core/types.js";
+import { kuruAdapter } from "./protocols/kuru.js";
 import { mockSwapAdapter } from "./protocols/mockSwap.js";
 import { sunSwapV4Adapter } from "./protocols/sunSwapV4.js";
 import type { DefiBuildRequest, DefiProtocolAdapter, DefiQuoteRequest } from "./protocols/types.js";
@@ -7,6 +8,7 @@ import { uniswapV3Adapter } from "./protocols/uniswapV3.js";
 import type { DefiProtocolSnapshot } from "./types.js";
 
 const adapters = new Map<string, DefiProtocolAdapter>([
+  kuruAdapter,
   mockSwapAdapter,
   sunSwapV4Adapter,
   uniswapV3Adapter,

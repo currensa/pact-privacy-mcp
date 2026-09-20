@@ -47,6 +47,45 @@ const pool = "0x7777777777777777777777777777777777777777" as const;
 const destination = "0x8888888888888888888888888888888888888888" as const;
 const pureRouter = "0x9999999999999999999999999999999999999999" as const;
 
+const kuruRouter = "0x7efbe105ca7415de98f96622173458ac1c054630" as const;
+const kuruMarket = "0xdc8d4197aceb1ca86446d6e77889f1b3397adfa9" as const;
+const kuruVault = "0x89435e121086474f3a2f4ba479509390cd98f545" as const;
+const kuruMarginAccount = "0xd029c2d98ff85d8f64799017fe00a59b1159ce02" as const;
+const kuruBaseToken = "0x44e9820a45886275b48ebb4c091d032d57e6a402" as const;
+const kuruQuoteToken = "0xbc18ffe052aaa538f028c90661f7b38a68a77257" as const;
+
+const kuruProtocol: DefiProtocolSnapshot = {
+  name: "Kuru",
+  type: "kuru",
+  outputBehavior: "variable",
+  address: kuruRouter,
+  helpContracts: { market: kuruMarket, vault: kuruVault, marginAccount: kuruMarginAccount },
+};
+
+function kuruQuote(overrides: Record<string, unknown> = {}): DefiQuote {
+  return {
+    amountIn: 10_000_000_000_000_000_000n,
+    estimatedOutput: 9_871_287_128_712_871_287n,
+    minimumOutput: 9_821_930_693_069_306_930n,
+    routeLabel: "Direct Kuru market",
+    payload: {
+      chainId: 10143,
+      router: kuruRouter,
+      market: kuruMarket,
+      vault: kuruVault,
+      baseToken: kuruBaseToken,
+      quoteToken: kuruQuoteToken,
+      tokenIn: kuruBaseToken,
+      tokenOut: kuruQuoteToken,
+      amountIn: "10000000000000000000",
+      amountOut: "9871287128712871287",
+      isBuy: false,
+      blockNumber: "62968341",
+      ...overrides,
+    },
+  };
+}
+
 const uniswapProtocol: DefiProtocolSnapshot = {
   name: "Uniswap V3",
   type: "uniswap-v3",
@@ -129,5 +168,67 @@ test("rejects tampered and native Uniswap V3 routes", () => {
     ...common,
     inputToken: "0x0000000000000000000000000000000000000000",
     quote: uniswapQuote({ tokenIn: "0x0000000000000000000000000000000000000000" }),
+  }), /ERC-20 tokens/);
+});
+
+test("builds the frontend-compatible Kuru fixture as one exact-input market call", () => {
+  const result = buildSwapCalls({
+    chainId: 10143,
+    family: "evm",
+    protocol: kuruProtocol,
+    inputToken: kuruBaseToken,
+    outputToken: kuruQuoteToken,
+    amount: 10_000_000_000_000_000_000n,
+    quote: kuruQuote(),
+    pureRouter,
+    destination,
+    slippageBips: 50n,
+    requiredOutput: 9_850_000_000_000_000_000n,
+  });
+  assert.equal(result.outputLocation, "pure-router");
+  assert.equal(result.calls.length, 3);
+  assert.deepEqual(result.calls.map((call) => call.target), [kuruBaseToken, kuruRouter, kuruBaseToken]);
+  assert.ok(result.calls.every((call) => call.value === 0n));
+
+  const token = new Interface(["function approve(address spender,uint256 amount)"]);
+  const approval = token.decodeFunctionData("approve", result.calls[0]!.data);
+  assert.equal(String(approval[0]).toLowerCase(), kuruRouter);
+  assert.equal(approval[1], 10_000_000_000_000_000_000n);
+  const clearedApproval = token.decodeFunctionData("approve", result.calls[2]!.data);
+  assert.equal(String(clearedApproval[0]).toLowerCase(), kuruRouter);
+  assert.equal(clearedApproval[1], 0n);
+
+  const router = new Interface([
+    "function anyToAnySwap(address[] marketAddresses,bool[] isBuy,bool[] nativeSend,address debitToken,address creditToken,uint256 amount,uint256 minAmountOut) payable returns (uint256 amountOut)",
+  ]);
+  const decoded = router.decodeFunctionData("anyToAnySwap", result.calls[1]!.data);
+  assert.deepEqual([...decoded[0]].map((value) => String(value).toLowerCase()), [kuruMarket]);
+  assert.deepEqual([...decoded[1]], [false]);
+  assert.deepEqual([...decoded[2]], [false]);
+  assert.equal(String(decoded[3]).toLowerCase(), kuruBaseToken);
+  assert.equal(String(decoded[4]).toLowerCase(), kuruQuoteToken);
+  assert.equal(decoded[5], 10_000_000_000_000_000_000n);
+  assert.equal(decoded[6], 9_850_000_000_000_000_000n);
+});
+
+test("rejects tampered, mismatched, and native Kuru routes", () => {
+  const common = {
+    chainId: 10143,
+    family: "evm" as const,
+    protocol: kuruProtocol,
+    inputToken: kuruBaseToken,
+    outputToken: kuruQuoteToken,
+    amount: 10_000_000_000_000_000_000n,
+    pureRouter,
+    destination,
+    slippageBips: 50n,
+  };
+  assert.throws(() => buildSwapCalls({ ...common, quote: kuruQuote({ chainId: 1 }) }), /chain mismatch/);
+  assert.throws(() => buildSwapCalls({ ...common, quote: kuruQuote({ market: pool }) }), /market mismatch/);
+  assert.throws(() => buildSwapCalls({ ...common, quote: kuruQuote({ isBuy: true }) }), /direction mismatch/);
+  assert.throws(() => buildSwapCalls({
+    ...common,
+    inputToken: "0x0000000000000000000000000000000000000000",
+    quote: kuruQuote({ tokenIn: "0x0000000000000000000000000000000000000000" }),
   }), /ERC-20 tokens/);
 });

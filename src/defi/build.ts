@@ -159,9 +159,17 @@ export async function buildDefiCalldata(client: PactPrivacyClient, operation: Op
     }
     depositDelivery = delivery(operation, plan, proof, data.receivers, data.depositorEncPubkey);
   } else if (swap.outputLocation === "pure-router") {
-    calls.push(plan.outputToken === NATIVE_TOKEN
-      ? { target: destination, value: quote.estimatedOutput, data: "0x" }
-      : { target: plan.outputToken, value: 0n, data: erc20.encodeFunctionData("transfer", [destination, quote.estimatedOutput]) as `0x${string}` });
+    if (plan.protocol.outputBehavior === "variable") {
+      calls.push({
+        target: selected.config.pureRouter,
+        value: 0n,
+        data: pureRouter.encodeFunctionData("sweepRemaining", [plan.outputToken, destination]) as `0x${string}`,
+      });
+    } else {
+      calls.push(plan.outputToken === NATIVE_TOKEN
+        ? { target: destination, value: quote.estimatedOutput, data: "0x" }
+        : { target: plan.outputToken, value: 0n, data: erc20.encodeFunctionData("transfer", [destination, quote.estimatedOutput]) as `0x${string}` });
+    }
   }
   const commitment = computeDefiCommitment(BigInt(plan.defiFee), calls);
   const withdraw = await new WithdrawProofService(client.backend, client.proofs).generate({
