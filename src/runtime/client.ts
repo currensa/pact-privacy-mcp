@@ -44,6 +44,14 @@ export class PactPrivacyClient {
     }
   }
 
+  async assertRelayedSupported(chainId: number): Promise<void> {
+    const chain = await this.backend.chain(chainId);
+    if (chain.capabilities?.relayed !== true) {
+      throw new Error("Relayed operations are unavailable on this Organization chain");
+    }
+    throw new Error("Relayed operations require a separate Organization MCP enablement review");
+  }
+
   async close(): Promise<void> {
     const selected = [...this.selectedChains.values()];
     this.selectedChains.clear();

@@ -13,7 +13,8 @@ export class RefundPreparationService {
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt refund data");
     const { config, runtime } = await this.client.chain(input.chainId);
-    const { content } = await decryptRefund(this.client, input.chainId, input.leafIndex, password);
+    const { content, deposition } = await decryptRefund(this.client, input.chainId, input.leafIndex, password);
+    if (!deposition.org_id || !deposition.batch_id) throw new Error("Organization refund identity is unavailable");
     const token = normalizeAddress(content.token, config.family);
     const native = token === "0x0000000000000000000000000000000000000000";
     const web3 = new Web3Service(config, runtime);
@@ -25,6 +26,8 @@ export class RefundPreparationService {
     const state = await refundState(web3, content);
     const signer = normalizeAddress(this.client.signer.address(config.family), config.family);
     const plan: RefundPlan = {
+      orgId: deposition.org_id,
+      batchId: deposition.batch_id,
       leafIndex: input.leafIndex,
       token,
       tokenSymbol: content.tokenSymbol ?? details?.symbol ?? config.nativeCurrency?.symbol ?? "native",

@@ -16,6 +16,7 @@ export class RelayedDefiPreparationService {
     maximumFee?: string;
     relayerUrl: string;
   }) {
+    await this.client.assertRelayedSupported(input.chainId);
     if (input.withdrawAll === (input.withdrawalAmount !== undefined)) {
       throw new Error("Choose exactly one of --withdraw-amount or --withdraw-all");
     }

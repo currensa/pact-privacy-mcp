@@ -59,13 +59,14 @@ export class RelayedDefiExecutionService {
     if (remote.blockNumber === null) throw new Error("Confirmed relayer operation has no block number");
     operation = await enterIndexing(this.operations, id);
     if (operation.stage !== "completed") {
-      await deliverRedeposit(this.client, this.operations, operation, payload.delivery, payload.delivery.predictedLeafIndex, remote.blockNumber);
+      await deliverRedeposit(this.client, this.operations, operation, payload.delivery, payload.delivery.predictedLeafIndex, hash);
     }
     return this.operations.get(id);
   }
 
   private async statusLocked(id: string): Promise<OperationRecord> {
     let operation = await this.operations.get(id);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (["completed", "cancelled", "expired", "failed"].includes(operation.stage)) return operation;
     const payload = await this.payloads.get(id);
@@ -76,6 +77,7 @@ export class RelayedDefiExecutionService {
 
   private async executeLocked(id: string): Promise<OperationRecord> {
     let operation = await this.operations.get(id);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(id, "relayed-defi", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(id);

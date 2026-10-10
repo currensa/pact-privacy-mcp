@@ -25,7 +25,7 @@ const pureRouter = new Interface(["function sweepRemaining(address token,address
 export function defiPlanFrom(operation: OperationRecord, kind: "defi" | "relayed-defi"): DefiPlan {
   if (operation.kind !== kind) throw new Error(`Operation ${operation.id} is not ${kind}`);
   const plan = operation.plan as Partial<DefiPlan>;
-  if (!Number.isSafeInteger(plan.allocationId) || !Number.isSafeInteger(plan.leafIndex)
+  if (typeof plan.allocationId !== "string" || !plan.allocationId || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.inputToken !== "string" || typeof plan.outputToken !== "string"
     || typeof plan.swapAmount !== "string" || typeof plan.minimumOutput !== "string"
     || typeof plan.defiFee !== "string" || typeof plan.totalWithdrawal !== "string"
@@ -46,7 +46,8 @@ async function redepositReceivers(client: PactPrivacyClient, operation: Operatio
   const { config } = await client.chain(operation.chainId);
   if (config.family === "tron") throw new Error("Private re-deposit is not supported on TRON");
   if (!plan.recipients || !plan.registryDigest) throw new Error("Private re-deposit recipients are unavailable");
-  const rows = (await client.backend.users(config.family)).map((row) => registered(row, config.family));
+  const rows = (await client.backend.recipientProfiles(plan.recipients.map((recipient) => recipient.address)))
+    .map((row) => registered(row, config.family));
   const receivers = plan.recipients.map((recipient) => {
     const account = rows.find((row) => row.address === recipient.address);
     if (!account) throw new Error(`Receiver is no longer registered: ${recipient.address}`);
@@ -63,26 +64,23 @@ async function redepositReceivers(client: PactPrivacyClient, operation: Operatio
   return { receivers, depositorSecretHash: account.secretHash, depositorEncPubkey: account.encPubkey };
 }
 
-function delivery(operation: OperationRecord, plan: DefiPlan, proof: Awaited<ReturnType<DepositProofService["generate"]>>, receivers: DepositReceiver[], depositorEncPubkey: string | null): DepositDelivery {
+function delivery(operation: OperationRecord, proof: Awaited<ReturnType<DepositProofService["generate"]>>, receivers: DepositReceiver[], depositorEncPubkey: string | null): DepositDelivery {
   const batchId = `df_${operation.id}`;
   return {
     predictedLeafIndex: proof.leafIndex,
+    depositLeaf: proof.depositLeaf,
     deposition: {
-      encContent: proof.canRefund === 1 && depositorEncPubkey ? encryptMessage(JSON.stringify({
-        token: plan.outputToken, tokenSymbol: plan.outputTokenSymbol, decimals: plan.outputDecimals, tier: proof.tier,
-        authRoot: proof.authRoot, depositLeaf: proof.depositLeaf, depositorSecretHash: proof.depositorSecretHash,
-        refundEntries: proof.refundEntries,
-      }), depositorEncPubkey) : null,
+      encContent: null,
       canRefund: proof.canRefund,
-      depositInfo: JSON.stringify({ depositorSecretHash: proof.depositorSecretHash, encPubkey: depositorEncPubkey }),
+      depositInfo: JSON.stringify({ encPubkey: depositorEncPubkey }),
     },
     messages: proof.receivers.map((receiver, index) => ({
       address: receiver.address,
       content: encryptMessage(JSON.stringify({
-        nullifier: receiver.nullifier, amount: receiver.amount, token: plan.outputToken, decimals: plan.outputDecimals,
-        tokenSymbol: plan.outputTokenSymbol, authRoot: proof.authRoot, depositorSecretHash: proof.depositorSecretHash,
+        nullifier: receiver.nullifier, amount: receiver.amount, authRoot: proof.authRoot, depositorSecretHash: proof.depositorSecretHash,
         authPathElements: receiver.authPathElements, authPathIndices: receiver.authPathIndices,
-        leafIndex: proof.leafIndex, tier: proof.tier,
+        depositPathElements: proof.depositPathElements, depositPathIndices: proof.depositPathIndices,
+        leafIndex: proof.leafIndex,
       }), receiver.encPubkey),
       secretHash: receivers[index]!.secretHash,
       encPubkey: receivers[index]!.encPubkey,
@@ -157,7 +155,7 @@ export async function buildDefiCalldata(client: PactPrivacyClient, operation: Op
         data: pureRouter.encodeFunctionData("sweepRemaining", [plan.outputToken, plan.excessRecipient]) as `0x${string}`,
       });
     }
-    depositDelivery = delivery(operation, plan, proof, data.receivers, data.depositorEncPubkey);
+    depositDelivery = delivery(operation, proof, data.receivers, data.depositorEncPubkey);
   } else if (swap.outputLocation === "pure-router") {
     if (plan.protocol.outputBehavior === "variable") {
       calls.push({

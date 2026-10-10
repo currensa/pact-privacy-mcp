@@ -23,9 +23,8 @@ import { DefiQuoteService } from "../defi/quote.js";
 import { RelayedDefiPreparationService } from "../relayed-defi/prepare.js";
 import { RelayedDefiExecutionService } from "../relayed-defi/execute.js";
 import { RelayedDefiQuoteService } from "../relayed-defi/quote.js";
-import { AccountStore, accountOperationDirectory, profileFromEnvironment } from "../accounts/store.js";
+import { AccountStore, accountOperationDirectory } from "../accounts/store.js";
 import { resolveAccountContext } from "../accounts/context.js";
-import { migrateLegacyAccount } from "../accounts/migration.js";
 import { OperationStore } from "../operations/store.js";
 import { OnboardingService } from "./onboarding.js";
 import { RelayerClient } from "../relayer/client.js";
@@ -83,15 +82,13 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
     if (invocation.command === "account.add") {
       const shared = await accountStore.shared();
       const backendUrl = stringOption(invocation.options, "backend") ?? shared.backendUrl;
-      const family = stringOption(invocation.options, "family");
-      const provisioned = await new OnboardingService(prompter).provision({
+      const provisioned = await new OnboardingService(prompter, accountStore).provision({
         ...(backendUrl ? { backendUrl } : {}),
-        ...(family ? { family } : {}),
       });
-      const profile = await accountStore.add(profileFromEnvironment(provisioned.environment, provisioned.families));
-      await accountStore.updateShared({ backendUrl: provisioned.environment.backendUrl });
+      const profile = await accountStore.get(provisioned.addresses.evm!);
       output({
         address: profile.address,
+        membership: provisioned.membership,
         families: profile.families,
         addresses: profile.addresses,
         isDefault: (await accountStore.shared()).defaultAccount === profile.address,
@@ -121,10 +118,6 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
       if (!identifier) throw new Error("Account address is required");
       const selected = await accountStore.use(identifier);
       output({ address: selected.address, isDefault: true });
-      return;
-    }
-    if (invocation.command === "account.migrate") {
-      output(await migrateLegacyAccount(resolve(stringOption(invocation.options, "env") ?? ".env"), accountStore));
       return;
     }
     if (invocation.command === "account.remove") {
@@ -282,6 +275,9 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
     }
 
     switch (invocation.command) {
+      case "organization.list":
+        output(await discovery.organizations());
+        return;
       case "chain.list":
         output(await discovery.chains());
         return;
@@ -289,11 +285,11 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         output(await (await web3()).tokens());
         return;
       case "receiver.list":
-        output(await discovery.receivers(familyOption(invocation.options), stringOption(invocation.options, "address")));
+        output(await discovery.receivers(stringOption(invocation.options, "org", true)!, stringOption(invocation.options, "address")));
         return;
       case "address.show": {
         const family = familyOption(invocation.options);
-        const families: ChainFamily[] = family ? [family] : ["evm", "tron"];
+        const families: ChainFamily[] = family ? [family] : ["evm"];
         output(families.map((selected) => ({
           family: selected,
           address: client.signer.displayAddress(selected),
@@ -345,6 +341,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
           csvPath ? resolve(csvPath) : undefined,
         );
         output(await new DepositPreparationService(client, operations).prepare({
+          orgId: stringOption(invocation.options, "org", true)!,
           chainId,
           token: stringOption(invocation.options, "token", true)!,
           recipients,
@@ -374,7 +371,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         const amount = stringOption(invocation.options, "amount");
         output(await new WithdrawPreparationService(client, operations).prepare({
           chainId,
-          allocationId: integerOption(invocation.options, "allocation", true)!,
+          allocationId: stringOption(invocation.options, "allocation", true)!,
           ...(amount ? { amount } : {}),
           all: booleanOption(invocation.options, "all"),
           ...(stringOption(invocation.options, "recipient") ? { recipient: stringOption(invocation.options, "recipient")! } : {}),
@@ -399,7 +396,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
         const maximumFee = stringOption(invocation.options, "maxFee");
         output(await new RelayedWithdrawPreparationService(client, operations).prepare({
           chainId,
-          allocationId: integerOption(invocation.options, "allocation", true)!,
+          allocationId: stringOption(invocation.options, "allocation", true)!,
           ...(amount ? { amount } : {}),
           all: booleanOption(invocation.options, "all"),
           recipient: stringOption(invocation.options, "recipient", true)!,
@@ -530,7 +527,7 @@ export function createCliExecutor(prompter: Prompter): CliExecutor {
           : [];
         const common = {
           chainId,
-          allocationId: integerOption(invocation.options, "allocation", true)!,
+          allocationId: stringOption(invocation.options, "allocation", true)!,
           protocol: stringOption(invocation.options, "protocol", true)!,
           outputToken: stringOption(invocation.options, "outputToken", true)!,
           minimumOutput: stringOption(invocation.options, "minOutput", true)!,

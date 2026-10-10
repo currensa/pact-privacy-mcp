@@ -6,14 +6,18 @@ import type { PactPrivacyClient } from "../runtime/client.js";
 
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-export async function deliverRedeposit(client: PactPrivacyClient, operations: OperationService, operation: OperationRecord, value: DepositDelivery, leafIndex: number, blockNumber: number): Promise<void> {
-  const deadline = Date.now() + ((await client.chain(operation.chainId)).config.family === "tron" ? 180_000 : 90_000);
+export async function deliverRedeposit(client: PactPrivacyClient, operations: OperationService, operation: OperationRecord, value: DepositDelivery, leafIndex: number, txHash: string): Promise<void> {
+  if (leafIndex !== value.predictedLeafIndex || !value.depositLeaf || value.deposition.canRefund !== 0) {
+    throw new Error("Confirmed DeFi re-deposit does not match its encrypted delivery");
+  }
+  const deadline = Date.now() + 90_000;
   while (true) {
     try {
-      await client.backend.saveDeposition({
-        leafIndex, chainId: operation.chainId, blockNumber, encContent: value.deposition.encContent,
-        canRefund: value.deposition.canRefund, isRefunded: false, depositInfo: value.deposition.depositInfo,
+      const result = await client.backend.confirmDefiDeposit({
+        caipChainId: `eip155:${operation.chainId}`, txHash, leafIndex, depositLeaf: value.depositLeaf,
+        withdrawMessages: value.messages,
       });
+      if (!result.success) throw new Error("Organization DeFi deposit confirmation failed");
       break;
     } catch (error) {
       if (!(error instanceof BackendError) || (error.status !== 409 && error.status !== 503) || Date.now() >= deadline) throw error;
@@ -22,7 +26,6 @@ export async function deliverRedeposit(client: PactPrivacyClient, operations: Op
   }
   let current = await operations.get(operation.id);
   if (current.stage === "indexing") current = await operations.transition(operation.id, "delivering", ["indexing"]);
-  for (const message of value.messages) await client.backend.saveMessage({ ...message, chainId: operation.chainId, leafIndex });
   current = await operations.get(operation.id);
   if (current.stage === "delivering") await operations.transition(operation.id, "completed", ["delivering"]);
 }

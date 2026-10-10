@@ -80,7 +80,7 @@ export class DefiExecutionService {
     if (!payload.delivery) throw new Error("Encrypted re-deposit delivery payload is unavailable");
     operation = await enterIndexing(this.operations, operationId);
     const leafIndex = gateway.depositLeafIndex(receipt, payload.delivery.predictedLeafIndex);
-    if (operation.stage !== "completed") await deliverRedeposit(this.client, this.operations, operation, payload.delivery, leafIndex, receipt.blockNumber);
+    if (operation.stage !== "completed") await deliverRedeposit(this.client, this.operations, operation, payload.delivery, leafIndex, receipt.hash);
     return this.operations.get(operationId);
   }
 }

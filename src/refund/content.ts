@@ -8,9 +8,19 @@ import type { RefundContent } from "./types.js";
 const TIERS = new Set([8, 16, 32, 64, 128]);
 
 export function parseRefundContent(value: string): RefundContent {
-  const parsed = JSON.parse(value) as Partial<RefundContent>;
+  const payload = JSON.parse(value) as {
+    version?: number; batchId?: string; leafIndex?: number; token?: string; tier?: number;
+    authRoot?: string; depositLeaf?: string; depositorSecretHash?: string;
+    slots?: Array<{ nullifier: string; secretHash: string; withdrawAmount: string }>;
+  };
+  const parsed = { ...payload, refundEntries: payload.slots?.map((slot) => ({
+    nullifier: slot.nullifier, secretHash: slot.secretHash, amount: slot.withdrawAmount,
+  })) };
   if (
-    typeof parsed.token !== "string"
+    payload.version !== 2
+    || typeof payload.batchId !== "string"
+    || !Number.isSafeInteger(payload.leafIndex)
+    || typeof parsed.token !== "string"
     || !Number.isSafeInteger(parsed.tier)
     || !TIERS.has(parsed.tier as number)
     || typeof parsed.authRoot !== "string"
@@ -43,6 +53,9 @@ export async function decryptRefund(
   if (!account.found || !account.encryptedSecret) throw new Error("Account is not initialized");
   const keyPair = await deriveEncryptionKeyPair(password, client.signer, config.family);
   const content = parseRefundContent(decryptMessage(deposition.enc_content, keyPair.secretKey));
+  if (content.batchId !== deposition.batch_id || content.leafIndex !== leafIndex) {
+    throw new Error("Encrypted refund data does not match the Organization deposit");
+  }
   return { deposition, content, rawSecret: decryptOwnSecret(account.encryptedSecret, keyPair.secretKey) };
 }
 

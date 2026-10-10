@@ -19,7 +19,7 @@ async function parse(args: string[]): Promise<CliInvocation> {
 
 test("parses repeatable deposit receivers and global environment", async () => {
   const result = await parse([
-    "--env", "private.env", "deposit", "prepare", "--chain", "11142220", "--token", "USDC",
+    "--env", "private.env", "deposit", "prepare", "--org", "org_1", "--chain", "11142220", "--token", "USDC",
     "--receiver", "0xAlice:1.25", "--receiver", "0xBob:2.50", "--refund",
   ]);
   assert.equal(result.command, "deposit.prepare");
@@ -27,6 +27,7 @@ test("parses repeatable deposit receivers and global environment", async () => {
   assert.deepEqual(result.options.receiver, ["0xAlice:1.25", "0xBob:2.50"]);
   assert.equal(result.options.env, "private.env");
   assert.equal(result.options.refund, true);
+  assert.equal(result.options.org, "org_1");
 });
 
 test("parses execute and recovery operation IDs", async () => {
@@ -58,6 +59,14 @@ test("parses account management and all-account operation listing", async () => 
   assert.equal(list.command, "operation.list");
   assert.equal(list.options.account, "0xAccount");
   assert.equal(list.options.allAccounts, true);
+});
+
+test("parses Organization account and membership commands", async () => {
+  const add = await parse(["account", "add", "--backend", "http://localhost:3000/api"]);
+  assert.equal(add.command, "account.add");
+  assert.equal(add.options.backend, "http://localhost:3000/api");
+  const organizations = await parse(["organization", "list"]);
+  assert.equal(organizations.command, "organization.list");
 });
 
 test("parses refund preparation by deposit leaf", async () => {

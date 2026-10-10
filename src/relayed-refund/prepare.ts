@@ -17,6 +17,7 @@ export class RelayedRefundPreparationService {
     maximumFee?: string;
     relayerUrl: string;
   }) {
+    await this.client.assertRelayedSupported(input.chainId);
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt refund data");
     const { config, runtime } = await this.client.chain(input.chainId);

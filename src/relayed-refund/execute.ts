@@ -110,6 +110,7 @@ export class RelayedRefundExecutionService {
 
   private async statusLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "indexing") return this.finishIndexing(operationId, plan);
     if (operation.stage === "completed" || operation.stage === "cancelled" || operation.stage === "expired" || operation.stage === "failed") return operation;
@@ -122,6 +123,7 @@ export class RelayedRefundExecutionService {
 
   private async executeLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(operationId, "relayed-refund", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(operationId);

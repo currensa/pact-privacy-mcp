@@ -19,7 +19,7 @@ function planFrom(operation: OperationRecord): RelayedWithdrawPlan {
   if (operation.kind !== "relayed-withdraw") throw new Error(`Operation ${operation.id} is not a relayed withdrawal`);
   const plan = operation.plan as Partial<RelayedWithdrawPlan>;
   if (
-    !Number.isSafeInteger(plan.allocationId)
+    typeof plan.allocationId !== "string" || !plan.allocationId
     || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.expectedAmount !== "string"
@@ -102,6 +102,7 @@ export class RelayedWithdrawExecutionService {
 
   private async statusLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "completed" || operation.stage === "cancelled" || operation.stage === "expired" || operation.stage === "failed") return operation;
     const payload = await this.payloads.get(operationId);
@@ -113,6 +114,7 @@ export class RelayedWithdrawExecutionService {
 
   private async executeLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertRelayedSupported(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(operationId, "relayed-withdraw", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(operationId);

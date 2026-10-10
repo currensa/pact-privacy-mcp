@@ -1,6 +1,7 @@
 import { normalizeAddress } from "../chain/address.js";
 import type { RegisteredReceiver } from "../core/types.js";
 import { encryptMessage } from "../crypto/messages.js";
+import { poseidonHash } from "../proof/poseidon.js";
 import { BackendError } from "../backend/client.js";
 import { OperationService } from "../operations/service.js";
 import type { OperationRecord, OperationStage } from "../operations/types.js";
@@ -21,11 +22,15 @@ function planFrom(operation: OperationRecord): DepositPlan {
   if (operation.kind !== "deposit") throw new Error(`Operation ${operation.id} is not a deposit`);
   const plan = operation.plan as Partial<DepositPlan>;
   if (
-    typeof plan.token !== "string"
+    typeof plan.orgId !== "string"
+    || typeof plan.batchId !== "string"
+    || typeof plan.encryptedPlanDigest !== "string"
+    || typeof plan.token !== "string"
     || typeof plan.tokenSymbol !== "string"
     || !Number.isSafeInteger(plan.decimals)
     || typeof plan.native !== "boolean"
     || !Array.isArray(plan.recipients)
+    || plan.recipients.some((recipient) => typeof recipient.memberId !== "string")
     || typeof plan.registryDigest !== "string"
     || typeof plan.totalAmount !== "string"
     || typeof plan.refund !== "boolean"
@@ -56,9 +61,20 @@ export class DepositExecutionService {
     depositorEncPubkey: string | null;
   }> {
     const { config } = await this.client.chain(operation.chainId);
-    const rows = (await this.client.backend.users(config.family)).map((row) => registeredReceiver(row, config.family));
+    const data = await this.client.backend.privacyDepositData(plan.orgId, plan.batchId);
+    if (data.transactionStatus !== "ready" || data.batchId !== plan.batchId
+      || data.caipChainId !== `eip155:${operation.chainId}`
+      || normalizeAddress(data.tokenAddress, "evm") !== plan.token
+      || data.privacyRefundable !== plan.refund
+      || data.tier !== plan.tier
+      || depositRegistryDigest(data.encryptedPlan) !== plan.encryptedPlanDigest
+      || normalizeAddress(data.depositorAddress, "evm") !== this.client.signer.address("evm")
+      || data.members.length !== plan.recipients.length) {
+      throw new Error("Organization payroll plan changed; prepare a new deposit");
+    }
+    const rows = data.members.map((row) => registeredReceiver(row, config.family));
     const receivers = plan.recipients.map((recipient) => {
-      const account = rows.find((row) => row.address === recipient.address);
+      const account = rows.find((row) => row.memberId === recipient.memberId && row.address === recipient.address);
       if (!account) throw new Error(`Receiver is no longer registered: ${recipient.address}`);
       return {
         address: recipient.address,
@@ -74,30 +90,30 @@ export class DepositExecutionService {
     })));
     if (registryDigest !== plan.registryDigest) throw new Error("Receiver registration changed; prepare a new deposit");
 
-    if (!plan.refund) return { receivers, depositorEncPubkey: null };
     const account = await this.client.backend.account(config.family);
-    if (!account.found || !account.secretHash || !account.encPubkey) {
-      throw new Error("Depositor account data is unavailable for refund support");
+    if (!account.found || !account.encPubkey || (plan.refund && !account.secretHash)) {
+      throw new Error("Depositor account data is unavailable");
     }
     const digest = depositRegistryDigest({ account: account.secretHash, key: account.encPubkey });
     if (digest !== plan.depositorRegistryDigest) throw new Error("Depositor account data changed; prepare a new deposit");
-    return { receivers, depositorSecretHash: account.secretHash, depositorEncPubkey: account.encPubkey };
+    return { receivers, ...(plan.refund ? { depositorSecretHash: account.secretHash! } : {}), depositorEncPubkey: account.encPubkey };
   }
 
-  private delivery(operation: OperationRecord, plan: DepositPlan, proof: Awaited<ReturnType<DepositProofService["generate"]>>, receivers: DepositReceiver[], depositorEncPubkey: string | null): DepositDelivery {
-    const batchId = `dp_${operation.id}`;
+  private async delivery(plan: DepositPlan, proof: Awaited<ReturnType<DepositProofService["generate"]>>, receivers: DepositReceiver[], depositorEncPubkey: string | null): Promise<DepositDelivery> {
+    if (!depositorEncPubkey) throw new Error("Depositor encryption key is unavailable");
+    const batchId = plan.batchId;
     const messages = proof.receivers.map((receiver, index) => ({
       address: receiver.address,
       content: encryptMessage(JSON.stringify({
         nullifier: receiver.nullifier,
         amount: receiver.amount,
-        token: plan.token,
-        decimals: plan.decimals,
-        tokenSymbol: plan.tokenSymbol,
+        depositRoot: proof.newDepositRoot,
         authRoot: proof.authRoot,
         depositorSecretHash: proof.depositorSecretHash,
         authPathElements: receiver.authPathElements,
         authPathIndices: receiver.authPathIndices,
+        depositPathElements: proof.depositPathElements,
+        depositPathIndices: proof.depositPathIndices,
         leafIndex: proof.leafIndex,
         tier: proof.tier,
       }), receiver.encPubkey),
@@ -105,24 +121,38 @@ export class DepositExecutionService {
       encPubkey: receivers[index]!.encPubkey,
       clientMessageId: `${batchId}:${index}`,
     }));
-    const encContent = proof.canRefund === 1 && depositorEncPubkey
-      ? encryptMessage(JSON.stringify({
+    const entries = await Promise.all(plan.recipients.map(async (recipient, index) => {
+      const slot = proof.refundEntries[index]!;
+      if (recipient.address !== proof.receivers[index]?.address || BigInt(slot.amount) !== BigInt(recipient.amount)) {
+        throw new Error("Deposit proof does not match the payroll plan");
+      }
+      if (plan.refund) return [recipient.memberId] as string[];
+      const nullifierHash = await poseidonHash([BigInt(slot.nullifier)]);
+      const commitment = await poseidonHash([BigInt(slot.secretHash), BigInt(slot.nullifier)]);
+      const authLeaf = await poseidonHash([BigInt(slot.amount), BigInt(plan.token), commitment]);
+      const hex = (value: bigint) => `0x${value.toString(16).padStart(64, "0")}`;
+      return [recipient.memberId, hex(nullifierHash), hex(authLeaf)];
+    }));
+    const encContent = encryptMessage(JSON.stringify({
+        version: 2,
+        batchId,
+        leafIndex: proof.leafIndex,
         token: plan.token,
-        tokenSymbol: plan.tokenSymbol,
-        decimals: plan.decimals,
         tier: proof.tier,
         authRoot: proof.authRoot,
         depositLeaf: proof.depositLeaf,
         depositorSecretHash: proof.depositorSecretHash,
-        refundEntries: proof.refundEntries,
-      }), depositorEncPubkey)
-      : null;
+        entries,
+        ...(plan.refund ? { slots: proof.refundEntries.map((slot) => ({
+          nullifier: slot.nullifier, secretHash: slot.secretHash, withdrawAmount: slot.amount,
+        })) } : {}),
+      }), depositorEncPubkey);
     return {
       predictedLeafIndex: proof.leafIndex,
       deposition: {
         encContent,
         canRefund: proof.canRefund,
-        depositInfo: JSON.stringify({ depositorSecretHash: proof.depositorSecretHash, encPubkey: depositorEncPubkey }),
+        depositInfo: JSON.stringify({ ...(plan.refund ? { depositorSecretHash: proof.depositorSecretHash } : {}), encPubkey: depositorEncPubkey }),
       },
       messages,
     };
@@ -172,23 +202,26 @@ export class DepositExecutionService {
 
   private async saveBackend(
     operation: OperationRecord,
+    plan: DepositPlan,
     delivery: DepositDelivery,
     leafIndex: number,
-    blockNumber: number,
+    txHash: string,
     timeoutMs: number,
   ): Promise<void> {
+    if (leafIndex !== delivery.predictedLeafIndex || !delivery.deposition.encContent) {
+      throw new Error("Confirmed deposit does not match its encrypted delivery");
+    }
     const deadline = Date.now() + timeoutMs;
     while (true) {
       try {
-        await this.client.backend.saveDeposition({
-          leafIndex,
-          chainId: operation.chainId,
-          blockNumber,
+        const result = await this.client.backend.confirmPrivacyDeposit(plan.orgId, plan.batchId, {
+          depositTxHash: txHash,
+          withdrawMessages: delivery.messages,
           encContent: delivery.deposition.encContent,
-          canRefund: delivery.deposition.canRefund,
-          isRefunded: false,
           depositInfo: delivery.deposition.depositInfo,
+          clientRefundId: `${plan.batchId}:${txHash}`,
         });
+        if (!result.success) throw new Error("Organization deposit confirmation failed");
         break;
       } catch (error) {
         if (!(error instanceof BackendError) || (error.status !== 409 && error.status !== 503) || Date.now() >= deadline) throw error;
@@ -197,9 +230,6 @@ export class DepositExecutionService {
     }
     const current = await this.operations.get(operation.id);
     if (current.stage === "indexing") await this.operations.transition(operation.id, "delivering", ["indexing"]);
-    for (const message of delivery.messages) {
-      await this.client.backend.saveMessage({ ...message, chainId: operation.chainId, leafIndex });
-    }
     const delivered = await this.operations.get(operation.id);
     if (delivered.stage === "delivering") await this.operations.transition(operation.id, "completed", ["delivering"]);
   }
@@ -267,8 +297,9 @@ export class DepositExecutionService {
         refund: plan.refund,
         ...(receiverData.depositorSecretHash ? { depositorSecretHash: receiverData.depositorSecretHash } : {}),
       });
-      const delivery = this.delivery(operation, plan, proof, receiverData.receivers, receiverData.depositorEncPubkey);
+      const delivery = await this.delivery(plan, proof, receiverData.receivers, receiverData.depositorEncPubkey);
       await this.payloads.saveDelivery(operationId, delivery);
+      await this.receivers(operation, plan);
       const transaction = await gateway.signDeposit(plan, proof);
       await this.payloads.saveTransaction(operationId, transaction);
       await this.operations.registerTransaction(operationId, "deposit", transaction.hash);
@@ -291,7 +322,7 @@ export class DepositExecutionService {
       throw new Error(`Deposit cannot deliver from stage ${operation.stage}`);
     }
     if (operation.stage !== "completed") {
-      await this.saveBackend(operation, latestPayload.delivery, leafIndex, depositReceipt.blockNumber, selected.config.family === "tron" ? 180_000 : 90_000);
+      await this.saveBackend(operation, plan, latestPayload.delivery, leafIndex, depositReceipt.hash, 90_000);
     }
     return this.operations.get(operationId);
   }

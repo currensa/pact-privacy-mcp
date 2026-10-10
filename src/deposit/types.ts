@@ -23,6 +23,8 @@ export type DepositProofResult = {
   canRefund: 0 | 1;
   totalAmount: bigint;
   leafIndex: number;
+  depositPathElements: string[];
+  depositPathIndices: number[];
   receivers: Array<{
     address: CanonicalAddress;
     nullifier: string;
@@ -35,11 +37,14 @@ export type DepositProofResult = {
 };
 
 export type DepositPlan = {
+  orgId: string;
+  batchId: string;
+  encryptedPlanDigest: string;
   token: CanonicalAddress;
   tokenSymbol: string;
   decimals: number;
   native: boolean;
-  recipients: Array<{ address: CanonicalAddress; amount: string }>;
+  recipients: Array<{ memberId: string; address: CanonicalAddress; amount: string }>;
   registryDigest: string;
   totalAmount: string;
   tier: CircuitTier;

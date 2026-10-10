@@ -16,7 +16,9 @@ function planFrom(operation: OperationRecord): RefundPlan {
   if (operation.kind !== "refund") throw new Error(`Operation ${operation.id} is not a refund`);
   const plan = operation.plan as Partial<RefundPlan>;
   if (
-    !Number.isSafeInteger(plan.leafIndex)
+    typeof plan.orgId !== "string"
+    || typeof plan.batchId !== "string"
+    || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.depositLeaf !== "string"
     || typeof plan.totalAllocated !== "string"
@@ -137,7 +139,9 @@ export class RefundExecutionService {
       throw new Error(`Refund cannot update the backend from stage ${operation.stage}`);
     }
     if (operation.stage === "indexing") {
-      await this.client.backend.markDepositionRefunded(operation.chainId, plan.leafIndex);
+      const hash = operation.transactions.find((entry) => entry.purpose === "refund")?.hash;
+      if (!hash) throw new Error("Confirmed refund transaction hash is unavailable");
+      await this.client.backend.confirmPrivacyRefund(plan.orgId, plan.batchId, hash);
       operation = await this.operations.transition(operationId, "completed", ["indexing" as OperationStage]);
     }
     return operation;

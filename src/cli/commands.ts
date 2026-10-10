@@ -41,7 +41,6 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
   account.command("add")
     .description("Generate or import and register another account")
     .option("--backend <url>", "backend URL; defaults to the shared setting")
-    .option("--family <family>", "evm, tron, or both")
     .action(invoke(executor, "account.add"));
   account.command("list")
     .description("List local accounts without credentials")
@@ -59,10 +58,9 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .argument("<address>")
     .option("--confirm", "confirm removal")
     .action(invoke(executor, "account.remove", ["address"]));
-  account.command("migrate")
-    .description("Explicitly migrate a legacy environment and its operations")
-    .option("--env <path>", "legacy environment file", ".env")
-    .action(invoke(executor, "account.migrate"));
+  program.command("organization").description("Inspect Organization memberships")
+    .command("list").description("List organizations for the selected account")
+    .action(invoke(executor, "organization.list"));
 
   const chain = program.command("chain").description("Inspect supported chains");
   chain.command("list")
@@ -81,8 +79,8 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
 
   const receiver = program.command("receiver").description("Inspect registered receivers");
   receiver.command("list")
-    .description("List registered receivers")
-    .option("--family <family>", "evm or tron")
+    .description("List active receivers in an organization")
+    .requiredOption("--org <org-id>", "organization ID")
     .option("--address <address>", "receiver address")
     .action(invoke(executor, "receiver.list"));
 
@@ -118,6 +116,7 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .option("--leaf-index <index>", "filter by deposit leaf index")
     .action(invoke(executor, "deposit.list"));
   chainOption(deposit.command("prepare").description("Prepare a private deposit"))
+    .requiredOption("--org <org-id>", "organization ID")
     .requiredOption("--token <token>", "token symbol or address")
     .option("--receiver <address:amount>", "receiver and decimal amount; repeatable", collect, [])
     .option("--receivers <csv-path>", "CSV containing address,amount rows")

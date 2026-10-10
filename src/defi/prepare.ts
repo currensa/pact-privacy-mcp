@@ -40,7 +40,7 @@ export async function defiAsset(web3: Web3Service, value: string): Promise<{ tok
 
 export type DefiQuoteInput = {
   chainId: number;
-  allocationId: number;
+  allocationId: string;
   amount?: string | undefined;
   all?: boolean;
   protocol: string;
@@ -125,6 +125,7 @@ export async function resolveDefiQuote(client: PactPrivacyClient, input: DefiQuo
 }
 
 export async function buildDefiPlan(client: PactPrivacyClient, input: PrepareDefiInput): Promise<{ plan: DefiPlan; quote: DefiQuote }> {
+  if (input.refund) throw new Error("Organization DeFi re-deposits are non-refundable");
   if (input.privateRedeposit === (input.destination !== undefined)) {
     throw new Error("Choose either --to or --private-redeposit");
   }
@@ -149,7 +150,8 @@ export async function buildDefiPlan(client: PactPrivacyClient, input: PrepareDef
   let depositorRegistryDigest: string | undefined;
   if (input.privateRedeposit) {
     if (input.recipients.length === 0) throw new Error("At least one re-deposit receiver is required");
-    const registered = (await client.backend.users(config.family)).map((row) => receiver(row, config.family));
+    const registered = (await client.backend.recipientProfiles(input.recipients.map((recipient) => recipient.address)))
+      .map((row) => receiver(row, config.family));
     const seen = new Set<string>();
     const values = input.recipients.map((requested) => {
       const address = normalizeAddress(requested.address, config.family);

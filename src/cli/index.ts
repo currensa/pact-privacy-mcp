@@ -37,8 +37,9 @@ program.command("status")
     for (const family of families) {
       process.stderr.write(`${family.toUpperCase()} address: ${signer.displayAddress(family)}\n`);
       try {
-        await backend.authenticate(signer, family);
-        const account = await backend.account();
+        const identity = await backend.assertApiKeyGrant(signer, family);
+        if (!identity.scopes.includes("mcp:read")) throw new Error("API key needs mcp:read scope");
+        const account = await backend.account(family);
         process.stderr.write(`${family.toUpperCase()} account: ${account.found ? "initialized" : "not initialized"}\n`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

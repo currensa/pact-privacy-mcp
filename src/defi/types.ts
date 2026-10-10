@@ -14,7 +14,7 @@ export type DefiProtocolSnapshot = {
 export type DefiRecipient = { address: CanonicalAddress; amount: string };
 
 export type DefiPlan = {
-  allocationId: number;
+  allocationId: string;
   leafIndex: number;
   tier: CircuitTier;
   allocationAmount: string;

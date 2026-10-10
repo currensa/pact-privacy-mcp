@@ -1,6 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import type { ChainFamily } from "../core/types.js";
 import type { McpAccountSelection } from "../accounts/mcp.js";
 import { McpWorkflows } from "./workflows.js";
 import { RefundDiscoveryService } from "../refund/list.js";
@@ -76,15 +75,18 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   register("list_chains", "List Pact Privacy chains available to the local account.", { account: accountField },
     ({ account }) => workflows.run(account, async ({ client }) => workflows.discovery(client).chains()), true);
 
+  register("list_organizations", "List organization IDs, membership status, and roles for the selected account.", { account: accountField },
+    ({ account }) => workflows.run(account, async ({ client }) => workflows.discovery(client).organizations()), true);
+
   register("list_tokens", "List configured fungible tokens on a chain.", { account: accountField, chainId: chainIdField },
     ({ account, chainId }) => workflows.run(account, async ({ client }) => (await workflows.web3(client, chainId)).tokens()), true);
 
-  register("list_receivers", "List registered private-payment receivers.", {
+  register("list_receivers", "List active private-payment receivers in one organization.", {
     account: accountField,
-    family: z.enum(["evm", "tron"]).optional(),
+    orgId: z.string().min(1),
     address: z.string().optional(),
-  }, ({ account, family, address }) => workflows.run(account, async ({ client }) => (
-    workflows.discovery(client).receivers(family as ChainFamily | undefined, address)
+  }, ({ account, orgId, address }) => workflows.run(account, async ({ client }) => (
+    workflows.discovery(client).receivers(orgId, address)
   )), true);
 
   register("show_addresses", "Show addresses derived from the selected local account.", {
@@ -164,11 +166,11 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   )));
 
   register("prepare_deposit", "Validate and prepare a private deposit without moving funds.", {
-    account: accountField, chainId: chainIdField, token: z.string().min(1),
+    account: accountField, orgId: z.string().min(1), chainId: chainIdField, token: z.string().min(1),
     recipients: z.array(z.object({ address: z.string().min(1), amount: z.string().min(1) })).min(1),
     refund: z.boolean().default(false),
-  }, ({ account, chainId, token, recipients, refund }) => workflows.run(account, async ({ client, operations }) => (
-    workflows.prepareDeposit(client, operations, { chainId, token, recipients, refund })
+  }, ({ account, orgId, chainId, token, recipients, refund }) => workflows.run(account, async ({ client, operations }) => (
+    workflows.prepareDeposit(client, operations, { orgId, chainId, token, recipients, refund })
   )));
 
   register("execute_deposit", "Execute a reviewed deposit operation.", {
@@ -180,7 +182,7 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   }));
 
   register("prepare_withdraw", "Prepare a partial or full private withdrawal without submitting it.", {
-    account: accountField, chainId: chainIdField, allocationId: z.number().int().nonnegative(),
+    account: accountField, chainId: chainIdField, allocationId: z.string().min(1),
     amount: z.string().min(1).optional(), all: z.boolean().default(false),
     recipient: z.string().min(1).optional().describe("Public recipient of the net withdrawal; defaults to the local signer."),
   }, ({ account, chainId, allocationId, amount, all, recipient }) => workflows.run(account, async ({ client, operations }) => (
@@ -197,7 +199,7 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   )));
 
   register("prepare_relayed_withdraw", "Prepare a relayer-submitted private withdrawal and obtain a quote.", {
-    account: accountField, chainId: chainIdField, allocationId: z.number().int().nonnegative(),
+    account: accountField, chainId: chainIdField, allocationId: z.string().min(1),
     amount: z.string().min(1).optional(), all: z.boolean().default(false), recipient: z.string().min(1),
     maximumFee: z.string().min(1).optional(), relayerUrl: z.string().url(),
   }, ({ account, chainId, allocationId, amount, all, recipient, maximumFee, relayerUrl }) => workflows.run(account, async ({ client, operations }) => (
@@ -270,7 +272,7 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   const defiFields = {
     account: accountField,
     chainId: chainIdField,
-    allocationId: z.number().int().nonnegative(),
+    allocationId: z.string().min(1),
     amount: z.string().min(1).optional(),
     all: z.boolean().default(false).describe("Use the allocation's full remaining amount; mutually exclusive with amount."),
     protocol: z.string().min(1),
@@ -322,7 +324,7 @@ export function registerWorkflowTools(server: McpServer, accounts: McpAccountSel
   register("prepare_relayed_defi", "Quote and prepare a relayer-submitted DeFi operation without moving funds.", {
     account: accountField,
     chainId: chainIdField,
-    allocationId: z.number().int().nonnegative(),
+    allocationId: z.string().min(1),
     withdrawalAmount: z.string().min(1).optional().describe("Gross allocation amount including the relayer fee."),
     withdrawAll: z.boolean().default(false).describe("Use the allocation's full remaining amount including the relayer fee."),
     protocol: z.string().min(1),

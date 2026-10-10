@@ -1,5 +1,10 @@
 # Pact Privacy CLI examples
 
+> Historical Core-edition examples. This Organization branch uses the server's
+> configured EVM networks, an invite code for `account add`, and an explicit
+> `--org` for recipient and deposit commands. See [README.md](README.md) and
+> `npm run cli -- --help` for the current commands. Relayed execution is disabled.
+
 After installing the published package globally, run commands with
 `pactpay <command>`. During development, the equivalent source command is
 `npm run cli -- <command>`.

@@ -25,6 +25,7 @@ export class RelayedDefiQuoteService {
   constructor(private readonly client: PactPrivacyClient) {}
 
   async quote(input: RelayedDefiQuoteInput) {
+    await this.client.assertRelayedSupported(input.chainId);
     if (!TIERS.has(input.tier)) throw new Error(`Unsupported withdrawal tier: ${input.tier}`);
     const { config, runtime } = await this.client.chain(input.chainId);
     if (!config.pactPrivacyDefiRouter) throw new Error("DeFi router is not configured");

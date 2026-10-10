@@ -25,13 +25,13 @@ export function directWithdrawParties(
 export class WithdrawPreparationService {
   constructor(private readonly client: PactPrivacyClient, private readonly operations = new OperationService()) {}
 
-  async prepare(input: { chainId: number; allocationId: number; amount?: string; all: boolean; recipient?: string }) {
+  async prepare(input: { chainId: number; allocationId: string; amount?: string; all: boolean; recipient?: string }) {
     if (input.all === (input.amount !== undefined)) throw new Error("Choose exactly one of --amount or --all");
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");
     const { config, runtime } = await this.client.chain(input.chainId);
     const web3 = new Web3Service(config, runtime);
-    const { info } = await decryptAllocation(this.client, input.chainId, input.allocationId, password);
+    const { info, source } = await decryptAllocation(this.client, input.chainId, input.allocationId, password);
     if (!TIERS.has(info.tier)) throw new Error(`Unsupported withdrawal tier: ${info.tier}`);
     const token = normalizeAddress(info.token, config.family);
     const native = token === "0x0000000000000000000000000000000000000000";
@@ -58,6 +58,7 @@ export class WithdrawPreparationService {
     );
     const plan: WithdrawPlan = {
       allocationId: input.allocationId,
+      source,
       leafIndex: info.leafIndex,
       token,
       tokenSymbol,

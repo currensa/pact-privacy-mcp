@@ -13,6 +13,7 @@ export type StoredSignedTransaction = {
 
 export type DepositDelivery = {
   predictedLeafIndex: number;
+  depositLeaf?: string;
   deposition: {
     encContent: string | null;
     canRefund: 0 | 1;

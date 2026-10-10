@@ -88,6 +88,7 @@ export class McpWorkflows {
   }
 
   prepareDeposit(client: PactPrivacyClient, operations: OperationService, input: {
+    orgId: string;
     chainId: number;
     token: string;
     recipients: Array<{ address: string; amount: string }>;
@@ -98,7 +99,7 @@ export class McpWorkflows {
 
   prepareWithdraw(client: PactPrivacyClient, operations: OperationService, input: {
     chainId: number;
-    allocationId: number;
+    allocationId: string;
     amount?: string;
     all: boolean;
     recipient?: string;

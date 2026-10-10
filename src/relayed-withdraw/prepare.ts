@@ -15,13 +15,14 @@ export class RelayedWithdrawPreparationService {
 
   async prepare(input: {
     chainId: number;
-    allocationId: number;
+    allocationId: string;
     amount?: string;
     all: boolean;
     recipient: string;
     maximumFee?: string;
     relayerUrl: string;
   }) {
+    await this.client.assertRelayedSupported(input.chainId);
     if (input.all === (input.amount !== undefined)) throw new Error("Choose exactly one of --amount or --all");
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");

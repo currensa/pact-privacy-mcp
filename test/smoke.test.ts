@@ -28,7 +28,7 @@ test("lists synchronized workflow tools and calls echo over stdio", async () => 
         "echo",
         "list_accounts",
         "relayer_status",
-        "list_chains", "list_tokens", "list_receivers", "show_addresses",
+        "list_chains", "list_organizations", "list_tokens", "list_receivers", "show_addresses",
         "list_balances", "get_balance", "get_allowance", "transaction_status",
         "list_deposits", "list_allocations", "list_refundable_deposits",
         "approve_token", "transfer_native", "transfer_token",
