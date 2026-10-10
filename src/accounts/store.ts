@@ -35,12 +35,12 @@ const PROFILE_NAME = /^0x[0-9a-f]{40}\.json$/;
 
 export function defaultConfigDirectory(): string {
   const root = process.env.XDG_CONFIG_HOME || resolve(homedir(), ".config");
-  return resolve(root, "pact-privacy");
+  return resolve(root, "pact-privacy", "org");
 }
 
 export function defaultDataDirectory(): string {
   const root = process.env.XDG_DATA_HOME || resolve(homedir(), ".local", "share");
-  return resolve(root, "pact-privacy");
+  return resolve(root, "pact-privacy", "org");
 }
 
 export function accountOperationDirectory(address: CanonicalAddress): string {

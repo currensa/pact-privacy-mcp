@@ -17,18 +17,21 @@ npm run cli -- organization list
 npm run cli -- chain list
 ```
 
-`account add` generates or imports an EVM wallet, asks for an Organization invite
-code, logs in with a wallet signature, joins the organization, registers a
-privacy profile if needed, and creates or accepts a scoped API key. A public
+`account add` asks for the member name and Organization invite code, generates
+or imports an EVM wallet, logs in with a wallet signature, joins the
+organization, registers a privacy profile if needed, and creates or accepts a
+scoped API key. A public
 invitation may leave membership pending approval; pending members cannot use
 organization operations. The generated wallet is saved locally before remote
-onboarding, so a failed join can be retried without losing it. `account list`,
-`account show`, and `account use <address>` manage local profiles.
+onboarding, so a failed setup can be retried without losing it. A later
+`account add` offers to resume the incomplete default account; an already
+approved membership is reused instead of joined again. `account list`, `account
+show`, and `account use <address>` manage local profiles.
 
 Use the `orgId` from `organization list` for recipient discovery and deposits:
 
 ```bash
-npm run cli -- receiver list --chain 10143 --org <org-id>
+npm run cli -- receiver list --org <org-id>
 npm run cli -- deposit prepare --chain 10143 --org <org-id> --token <token> --receiver <address:amount>
 npm run cli -- deposit execute <operation-id> --confirm
 ```
@@ -53,8 +56,8 @@ account. The MCP exposes `list_organizations` and requires an explicit `orgId`
 for payroll recipient discovery and deposit preparation.
 
 Profiles (including wallet private keys, passwords, and API keys) are stored in
-`~/.config/pact-privacy/`; operation records are under
-`~/.local/share/pact-privacy/accounts/<address>/operations/`; verified circuits
+`~/.config/pact-privacy/org/`; operation records are under
+`~/.local/share/pact-privacy/org/accounts/<address>/operations/`; verified circuits
 are cached under `~/.cache/pact-privacy/circuits/`. Keep these files private and
 back up the wallet and secret securely. `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
 override the first two roots. Do not copy these files into a repository.

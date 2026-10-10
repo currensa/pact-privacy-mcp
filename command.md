@@ -92,7 +92,7 @@ Common and administrative parameters:
 | `--env <path>` | Most commands | Use a protected environment file as a standalone account override. |
 | `--account <address>` | Most commands | Use one local account for this command. It overrides `PACT_PRIVACY_ACCOUNT` and the saved default. |
 | `--chain <chain-id>` | Chain-specific commands | Numeric chain ID from `chain list`, such as `11142220`; it is not a family or network name. |
-| `--family <family>` | `account add`, `receiver list`, `address show` | `evm` or `tron`; `account add` also accepts `both`. |
+| `--family <family>` | `address show` | `evm` or `tron`. |
 | `--backend <url>` | `account add` | Pact Privacy backend API URL saved in the shared local configuration. |
 | `--confirm` | Write and execute commands | Skip the interactive confirmation. Validation and transaction-safety checks still run. |
 
@@ -163,16 +163,25 @@ Create account profiles and choose a default by address:
 
 ```bash
 pactpay account add
-pactpay account add --family both
-pactpay account add --family evm --backend https://privacy.pactpay.app/api
+pactpay account add --backend https://test.pactpay.app/api
 pactpay account list
 pactpay account show 0xAccount...
-pactpay account use TAccount...
-pactpay --account 0xAnotherAccount... balance list --chain 11142220
+pactpay account use 0xAccount...
+pactpay --account 0xAnotherAccount... balance list --chain 10143
 ```
+
+`account add` asks for the Organization member name and invite code. If the
+default local account was saved by an earlier incomplete setup and has no API
+key, the command offers to resume it. An approved membership is reused, and the
+command completes privacy-profile and verified API-key setup without creating
+another wallet.
 
 Removing a profile requires confirmation and does not remove that account's
 operation history or backend account.
+
+Organization profiles are stored under `~/.config/pact-privacy/org/`, and their
+operations are stored under `~/.local/share/pact-privacy/org/`. The verified
+circuit cache remains shared at `~/.cache/pact-privacy/circuits/`.
 
 Inspect local configuration, backend connectivity, account initialization, and
 API-key grants:
@@ -198,11 +207,12 @@ pactpay token list --chain 11142220
 pactpay token list --chain 3448148188
 ```
 
-List registered receivers. A family or address filter may narrow the result:
+List active registered receivers in an organization. An address filter may
+narrow the result:
 
 ```bash
-pactpay receiver list --family evm
-pactpay receiver list --family tron --address TNuoKL1ni8aoshfFL1ASca1Gou9RXwAzfn
+pactpay receiver list --org <org-id>
+pactpay receiver list --org <org-id> --address 0xReceiver...
 ```
 
 Show the addresses derived from the configured private key:

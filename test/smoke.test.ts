@@ -1,16 +1,33 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { AccountStore, profileFromEnvironment } from "../src/accounts/store.js";
+import { LocalSigner } from "../src/wallet/local-signer.js";
 
 test("lists synchronized workflow tools and calls echo over stdio", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "pact-mcp-smoke-"));
+  const configRoot = resolve(root, "config");
+  const dataRoot = resolve(root, "data");
+  const store = new AccountStore(resolve(configRoot, "pact-privacy", "org"));
+  const signer = LocalSigner.generate();
+  await store.add(profileFromEnvironment({
+    privateKey: signer.privateKey,
+    password: "smoke-password",
+    apiKey: "smoke-api-key",
+  }, ["evm"]));
+  await store.updateShared({ backendUrl: "http://localhost:3000/api" });
   const serverPath = fileURLToPath(
     new URL("../src/index.js", import.meta.url),
   );
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [serverPath],
+    env: { XDG_CONFIG_HOME: configRoot, XDG_DATA_HOME: dataRoot },
     stderr: "pipe",
   });
   const client = new Client({

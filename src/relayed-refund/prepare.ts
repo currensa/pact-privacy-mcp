@@ -21,7 +21,8 @@ export class RelayedRefundPreparationService {
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt refund data");
     const { config, runtime } = await this.client.chain(input.chainId);
-    const { content } = await decryptRefund(this.client, input.chainId, input.leafIndex, password);
+    const { content, deposition } = await decryptRefund(this.client, input.chainId, input.leafIndex, password);
+    if (!deposition.org_id || !deposition.batch_id) throw new Error("Organization refund identity is unavailable");
     const tier = asCircuitTier(content.tier);
     const token = normalizeAddress(content.token, config.family);
     const native = token === "0x0000000000000000000000000000000000000000";
@@ -37,6 +38,9 @@ export class RelayedRefundPreparationService {
       throw new Error("Maximum relayer fee must be positive and less than the refund amount");
     }
     const refunder = normalizeAddress(input.refunder, config.family);
+    if (refunder !== normalizeAddress(this.client.signer.address(config.family), config.family)) {
+      throw new Error("Only the depositor wallet can receive this refund");
+    }
     await this.client.proofs.prepare("refund", tier);
     const relayerClient = new RelayerClient(input.relayerUrl);
     const quote = await relayerClient.quoteRefund({
@@ -65,6 +69,8 @@ export class RelayedRefundPreparationService {
       throw new Error(`Relayer quote fee exceeds the accepted maximum (${fee} > ${maximumFee})`);
     }
     const plan: RelayedRefundPlan = {
+      orgId: deposition.org_id,
+      batchId: deposition.batch_id,
       leafIndex: input.leafIndex,
       token,
       tokenSymbol: content.tokenSymbol ?? details?.symbol ?? config.nativeCurrency?.symbol ?? "native",

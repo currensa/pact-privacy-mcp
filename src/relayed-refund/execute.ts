@@ -19,7 +19,9 @@ function planFrom(operation: OperationRecord): RelayedRefundPlan {
   if (operation.kind !== "relayed-refund") throw new Error(`Operation ${operation.id} is not a relayed refund`);
   const plan = operation.plan as Partial<RelayedRefundPlan>;
   if (
-    !Number.isSafeInteger(plan.leafIndex)
+    typeof plan.orgId !== "string" || !plan.orgId
+    || typeof plan.batchId !== "string" || !plan.batchId
+    || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.depositLeaf !== "string"
     || typeof plan.totalAllocated !== "string"
@@ -69,7 +71,9 @@ export class RelayedRefundExecutionService {
   private async finishIndexing(operationId: string, plan: RelayedRefundPlan): Promise<OperationRecord> {
     const operation = await this.operations.get(operationId);
     if (operation.stage !== "indexing") return operation;
-    await this.client.backend.markDepositionRefunded(operation.chainId, plan.leafIndex);
+    const confirmed = operation.transactions.find((entry) => entry.state === "confirmed" && entry.purpose === "relayed-refund");
+    if (!confirmed) throw new Error("Confirmed relayed refund transaction is unavailable");
+    await this.client.backend.confirmPrivacyRefund(plan.orgId, plan.batchId, confirmed.hash);
     return this.operations.transition(operationId, "completed", ["indexing"]);
   }
 

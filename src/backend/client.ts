@@ -62,14 +62,31 @@ export class PactPrivacyBackend {
       if (!this.sessionToken) throw new Error("Organization wallet login is required");
       headers.set("Authorization", `Bearer ${this.sessionToken}`);
     } else if (this.apiKey) headers.set("x-api-key", this.apiKey);
-    const response = await this.fetchImpl(`${this.apiBase}${path}`, { ...options, headers });
+    const method = options.method?.toUpperCase() ?? "GET";
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.apiBase}${path}`, { ...options, headers });
+    } catch (firstError) {
+      if (method !== "GET" && method !== "HEAD") {
+        const message = firstError instanceof Error ? firstError.message : String(firstError);
+        throw new Error(`Organization backend ${method} ${path} failed before receiving a response: ${message}`);
+      }
+      try {
+        response = await this.fetchImpl(`${this.apiBase}${path}`, { ...options, headers });
+      } catch (secondError) {
+        const message = secondError instanceof Error ? secondError.message : String(secondError);
+        throw new Error(`Organization backend ${method} ${path} failed before receiving a response after retry: ${message}`);
+      }
+    }
     if (!response.ok) {
       const body = await response.json().catch(() => undefined) as { message?: string | string[] } | undefined;
       const detail = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
       throw new BackendError(response.status, detail ?? `Backend request failed (${response.status})`);
     }
     if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    const body = await response.text();
+    if (!body) return undefined as T;
+    return JSON.parse(body) as T;
   }
 
   private async networks(): Promise<OrganizationNetwork[]> {
@@ -407,19 +424,36 @@ export class PactPrivacyBackend {
     });
   }
 
-  joinOrganization(code: string): Promise<{ member: { orgId: string; status: string }; message: string }> {
+  checkOrganizationMembership(code: string): Promise<{ isMember: boolean; orgId: string }> {
+    return this.request(`/orgs/invite-code/${encodeURIComponent(code)}/membership`, { authenticated: true });
+  }
+
+  joinOrganization(code: string, showName: string): Promise<{
+    member: { orgId: string; memberId: string; status: string; showName: string | null };
+    message: string;
+  }> {
     return this.request("/orgs/join", {
       authenticated: true,
       method: "POST",
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, showName }),
     });
   }
 
-  organizations(): Promise<Array<{
+  organizations(authenticated = false): Promise<Array<{
     organization: { orgId: string; orgName: string };
-    member: { status: string; roles: Array<{ role: string }> };
+    member: { memberId: string; status: string; showName: string | null; roles: Array<{ role: string }> };
   }>> {
-    return this.request("/orgs");
+    return this.request("/orgs", { authenticated });
+  }
+
+  updateMemberName(orgId: string, memberId: string, showName: string): Promise<{
+    memberId: string; status: string; showName: string | null;
+  }> {
+    return this.request(`/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(memberId)}/profile`, {
+      authenticated: true,
+      method: "PATCH",
+      body: JSON.stringify({ showName }),
+    });
   }
 
   async apiKeyIdentity(): Promise<ApiKeyIdentity> {
