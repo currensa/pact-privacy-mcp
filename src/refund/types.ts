@@ -4,6 +4,8 @@ import type { CircuitTier } from "../proof/artifact-cache.js";
 export type RefundEntry = { nullifier: string; secretHash: string; amount: string };
 
 export type RefundContent = {
+  batchId?: string;
+  leafIndex?: number;
   token: CanonicalAddress;
   tokenSymbol?: string;
   decimals?: number;
@@ -15,6 +17,8 @@ export type RefundContent = {
 };
 
 export type RefundPlan = {
+  orgId: string;
+  batchId: string;
   leafIndex: number;
   token: CanonicalAddress;
   tokenSymbol: string;

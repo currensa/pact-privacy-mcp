@@ -44,6 +44,12 @@ export class PactPrivacyClient {
     }
   }
 
+  async assertAccount(chainId: number): Promise<{ config: ChainDetails; runtime: ChainRuntime }> {
+    const selected = await this.chain(chainId);
+    await this.backend.assertApiKeyGrant(this.signer, selected.config.family);
+    return selected;
+  }
+
   async close(): Promise<void> {
     const selected = [...this.selectedChains.values()];
     this.selectedChains.clear();

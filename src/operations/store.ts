@@ -16,7 +16,7 @@ function delay(milliseconds: number): Promise<void> {
 
 export function defaultOperationDirectory(): string {
   const dataRoot = process.env.XDG_DATA_HOME || resolve(homedir(), ".local", "share");
-  return resolve(dataRoot, "pact-privacy", "operations");
+  return resolve(dataRoot, "pact-privacy", "org", "operations");
 }
 
 export function legacyOperationDirectory(): string {

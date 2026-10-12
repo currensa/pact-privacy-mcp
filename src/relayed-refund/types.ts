@@ -2,6 +2,8 @@ import type { CanonicalAddress } from "../core/types.js";
 import type { CircuitTier } from "../proof/artifact-cache.js";
 
 export type RelayedRefundPlan = {
+  orgId: string;
+  batchId: string;
   leafIndex: number;
   token: CanonicalAddress;
   tokenSymbol: string;

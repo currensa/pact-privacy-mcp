@@ -19,7 +19,8 @@ function planFrom(operation: OperationRecord): RelayedWithdrawPlan {
   if (operation.kind !== "relayed-withdraw") throw new Error(`Operation ${operation.id} is not a relayed withdrawal`);
   const plan = operation.plan as Partial<RelayedWithdrawPlan>;
   if (
-    !Number.isSafeInteger(plan.allocationId)
+    typeof plan.allocationId !== "string" || !plan.allocationId
+    || (plan.source !== "payroll" && plan.source !== "defi")
     || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.expectedAmount !== "string"
@@ -67,9 +68,24 @@ export class RelayedWithdrawExecutionService {
     return this.lease.run(operationId, () => this.statusLocked(operationId));
   }
 
+  private async finishIndexing(operationId: string, plan: RelayedWithdrawPlan): Promise<OperationRecord> {
+    const operation = await this.operations.get(operationId);
+    if (operation.stage !== "indexing") return operation;
+    const confirmed = operation.transactions.find((entry) =>
+      entry.state === "confirmed" && entry.purpose === "relayed-withdraw");
+    if (!confirmed) throw new Error("Confirmed relayed withdrawal transaction is unavailable");
+    if (plan.source === "payroll") {
+      await this.client.backend.confirmPrivacyWithdraw(plan.allocationId, confirmed.hash);
+    }
+    return this.operations.transition(operationId, "completed", ["indexing"]);
+  }
+
   private async track(operationId: string, remote: RelayerOperation): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
     if (remote.chainId !== operation.chainId) throw new Error("Relayer operation belongs to a different chain");
+    if (remote.operation !== undefined && remote.operation !== "withdraw") {
+      throw new Error("Relayer returned a different operation type");
+    }
     const hash = remote.transactionHash;
     if (hash) {
       const tracked = operation.transactions.find((entry) => entry.hash.toLowerCase() === hash.toLowerCase());
@@ -94,15 +110,18 @@ export class RelayedWithdrawExecutionService {
         ...(remote.blockNumber !== null ? { blockNumber: remote.blockNumber } : {}),
       });
       if (operation.stage === "pending" || operation.stage === "broadcasting") {
-        return this.operations.transition(operationId, "completed", [operation.stage]);
+        operation = await this.operations.transition(operationId, "indexing", [operation.stage]);
       }
+      return this.finishIndexing(operationId, planFrom(operation));
     }
     return this.operations.get(operationId);
   }
 
   private async statusLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
+    if (operation.stage === "indexing") return this.finishIndexing(operationId, plan);
     if (operation.stage === "completed" || operation.stage === "cancelled" || operation.stage === "expired" || operation.stage === "failed") return operation;
     const payload = await this.payloads.get(operationId);
     if (!payload.relayerOperationId) return operation;
@@ -113,10 +132,12 @@ export class RelayedWithdrawExecutionService {
 
   private async executeLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(operationId, "relayed-withdraw", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(operationId);
     if (operation.stage === "completed") return operation;
+    if (operation.stage === "indexing") return this.finishIndexing(operationId, plan);
     if (operation.stage === "expired" || operation.stage === "cancelled") throw new Error(`Operation is ${operation.stage}`);
     const payload = await this.payloads.get(operationId);
     if (payload.relayerOperationId) return this.statusLocked(operationId);
@@ -133,9 +154,10 @@ export class RelayedWithdrawExecutionService {
     if (normalizeAddress(selected.config.gravArc, selected.config.family) !== plan.gravArc) throw new Error("GravArc configuration changed after preparation");
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");
-    const { info, rawSecret } = await decryptAllocation(this.client, operation.chainId, plan.allocationId, password);
+    const { info, rawSecret, source } = await decryptAllocation(this.client, operation.chainId, plan.allocationId, password);
     const token = normalizeAddress(info.token, selected.config.family);
-    if (info.leafIndex !== plan.leafIndex || info.tier !== plan.tier || info.amount !== plan.allocationAmount || token !== plan.token) {
+    if (info.leafIndex !== plan.leafIndex || info.tier !== plan.tier || info.amount !== plan.allocationAmount
+      || source !== plan.source || token !== plan.token) {
       throw new Error("Encrypted allocation no longer matches the prepared relayed withdrawal");
     }
     const nullifierHashValue = await poseidonHash([BigInt(info.nullifier)]);

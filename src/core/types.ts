@@ -13,11 +13,18 @@ export type ChainSummary = {
 };
 
 export type ChainDetails = ChainSummary & {
+  capabilities?: { deposit: boolean; withdraw: boolean; refund: boolean; defi: boolean };
   gravArc: CanonicalAddress;
   erc20Tokens: { symbol: string; name: string; address: CanonicalAddress }[];
   pureRouter?: CanonicalAddress;
   pactPrivacyDefiRouter?: CanonicalAddress;
-  defiProtocols: { name: string; address: CanonicalAddress }[];
+  defiProtocols: Array<{
+    name: string;
+    type?: string;
+    outputBehavior?: "fixed" | "variable";
+    address: CanonicalAddress;
+    "help-contracts"?: Record<string, CanonicalAddress>;
+  }>;
 };
 
 export type AccountRecord = {
@@ -28,12 +35,15 @@ export type AccountRecord = {
 };
 
 export type RegisteredReceiver = {
+  memberId?: string;
   address: string;
   secretHash: string;
   encPubkey: string;
 };
 
 export type DepositionRecord = {
+  org_id?: string;
+  batch_id?: string;
   leaf_index: number;
   address: string;
   chain_id: string;
@@ -44,4 +54,15 @@ export type DepositionRecord = {
   message_count: number;
 };
 
-export type EncryptedAllocation = { id: number; content: string };
+export type EncryptedAllocation = {
+  id: string;
+  content: string;
+  token: string;
+  tier: number;
+  leafIndex: number;
+  depositLeaf: string;
+  recipient: string;
+  encryptedSecret: string;
+  source: "payroll" | "defi";
+  batchId?: string;
+};

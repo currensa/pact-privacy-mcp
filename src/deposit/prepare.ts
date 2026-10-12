@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { normalizeAddress } from "../chain/address.js";
+import { encryptMessage } from "../crypto/messages.js";
 import type { CanonicalAddress, RegisteredReceiver } from "../core/types.js";
 import { OperationService } from "../operations/service.js";
 import { canonicalPlan } from "../operations/plan.js";
@@ -71,11 +72,13 @@ export class DepositPreparationService {
   constructor(private readonly client: PactPrivacyClient, private readonly operations = new OperationService()) {}
 
   async prepare(input: {
+    orgId: string;
     chainId: number;
     token: string;
     recipients: RequestedRecipient[];
     refund: boolean;
   }) {
+    if (!input.orgId) throw new Error("Organization ID is required");
     const { config, runtime } = await this.client.chain(input.chainId);
     const web3 = new Web3Service(config, runtime);
     const native = input.token.toLowerCase() === "native" || input.token.toLowerCase() === NATIVE_TOKEN;
@@ -83,16 +86,17 @@ export class DepositPreparationService {
     const tokenAddress = native ? NATIVE_TOKEN : normalizeAddress(token!.address, config.family);
     const decimals = native ? (config.nativeCurrency?.decimals ?? (config.family === "tron" ? 6 : 18)) : token!.decimals;
     const tokenSymbol = native ? (config.nativeCurrency?.symbol ?? "native") : token!.symbol;
-    const registered = (await this.client.backend.users(config.family)).map((row) => receiverRecord(row, config.family));
+    const registered = (await this.client.backend.users(config.family, input.orgId)).map((row) => receiverRecord(row, config.family));
     const seen = new Set<string>();
-    const receivers: DepositReceiver[] = input.recipients.map((requested) => {
+    const receivers: Array<DepositReceiver & { memberId: string }> = input.recipients.map((requested) => {
       const address = normalizeAddress(requested.address, config.family);
       if (seen.has(address)) throw new Error(`Duplicate receiver: ${requested.address}`);
       seen.add(address);
       const account = registered.find((row) => row.canonical === address);
       if (!account) throw new Error(`Receiver is not registered: ${requested.address}`);
       const amount = web3.parseTokenAmount(requested.amount, decimals);
-      return { address, amount, secretHash: account.secretHash, encPubkey: account.encPubkey };
+      if (!account.memberId) throw new Error(`Receiver has no Organization member ID: ${requested.address}`);
+      return { memberId: account.memberId, address, amount, secretHash: account.secretHash, encPubkey: account.encPubkey };
     });
     const tier = selectDepositTier(receivers.length);
     const totalAmount = receivers.reduce((sum, receiver) => sum + receiver.amount, 0n);
@@ -102,14 +106,11 @@ export class DepositPreparationService {
       ? { raw: totalAmount.toString() }
       : await web3.allowance(tokenAddress, config.gravArc);
 
-    let depositorRegistryDigest: string | undefined;
-    if (input.refund) {
-      const account = await this.client.backend.account(config.family);
-      if (!account.found || !account.secretHash || !account.encPubkey) {
-        throw new Error("Account must be initialized before enabling refund support");
-      }
-      depositorRegistryDigest = depositRegistryDigest({ account: account.secretHash, key: account.encPubkey });
+    const account = await this.client.backend.account(config.family);
+    if (!account.found || !account.encPubkey || (input.refund && !account.secretHash)) {
+      throw new Error("A matching depositor privacy profile is required");
     }
+    const depositorRegistryDigest = depositRegistryDigest({ account: account.secretHash, key: account.encPubkey });
 
     const backendPath = await this.client.backend.depositPath(input.chainId);
     const onChainNextIndex = await web3.depositNextIndex();
@@ -118,12 +119,37 @@ export class DepositPreparationService {
     }
     const currentAllowance = BigInt(allowance.raw);
     const approvalRequired = !native && currentAllowance < totalAmount;
+    const encryptedPlan = encryptMessage(JSON.stringify({
+      version: 2,
+      orgId: input.orgId,
+      caipChainId: `eip155:${input.chainId}`,
+      tokenAddress,
+      privacyRefundable: input.refund,
+      allocations: receivers.map((receiver) => ({
+        memberId: receiver.memberId, address: receiver.address, amount: receiver.amount.toString(),
+      })),
+    }), account.encPubkey);
+    const created = await this.client.backend.createPrivacyDepositPlan(input.orgId, {
+      caipChainId: `eip155:${input.chainId}`, tokenAddress, privacyRefundable: input.refund,
+      members: receivers.map((receiver) => ({ memberId: receiver.memberId })), encryptedPlan,
+    });
+    if (!created.batchId || created.tier !== tier || created.caipChainId !== `eip155:${input.chainId}`
+      || normalizeAddress(created.tokenAddress, "evm") !== tokenAddress
+      || !Array.isArray(created.members) || created.members.length !== receivers.length
+      || created.members.some((member, index) =>
+        !member.address || normalizeAddress(member.address, "evm") !== receivers[index]!.address
+        || member.secretHash !== receivers[index]!.secretHash || member.encPubkey !== receivers[index]!.encPubkey)) {
+      throw new Error("Organization payroll plan does not match the prepared deposit");
+    }
     const plan: DepositPlan = {
+      orgId: input.orgId,
+      batchId: created.batchId,
+      encryptedPlanDigest: depositRegistryDigest(encryptedPlan),
       token: tokenAddress,
       tokenSymbol,
       decimals,
       native,
-      recipients: receivers.map((receiver) => ({ address: receiver.address, amount: receiver.amount.toString() })),
+      recipients: receivers.map((receiver) => ({ memberId: receiver.memberId, address: receiver.address, amount: receiver.amount.toString() })),
       registryDigest: depositRegistryDigest(receivers.map((receiver) => ({
         address: receiver.address,
         account: receiver.secretHash,

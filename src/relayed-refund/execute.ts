@@ -19,7 +19,9 @@ function planFrom(operation: OperationRecord): RelayedRefundPlan {
   if (operation.kind !== "relayed-refund") throw new Error(`Operation ${operation.id} is not a relayed refund`);
   const plan = operation.plan as Partial<RelayedRefundPlan>;
   if (
-    !Number.isSafeInteger(plan.leafIndex)
+    typeof plan.orgId !== "string" || !plan.orgId
+    || typeof plan.batchId !== "string" || !plan.batchId
+    || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.depositLeaf !== "string"
     || typeof plan.totalAllocated !== "string"
@@ -69,7 +71,9 @@ export class RelayedRefundExecutionService {
   private async finishIndexing(operationId: string, plan: RelayedRefundPlan): Promise<OperationRecord> {
     const operation = await this.operations.get(operationId);
     if (operation.stage !== "indexing") return operation;
-    await this.client.backend.markDepositionRefunded(operation.chainId, plan.leafIndex);
+    const confirmed = operation.transactions.find((entry) => entry.state === "confirmed" && entry.purpose === "relayed-refund");
+    if (!confirmed) throw new Error("Confirmed relayed refund transaction is unavailable");
+    await this.client.backend.confirmPrivacyRefund(plan.orgId, plan.batchId, confirmed.hash);
     return this.operations.transition(operationId, "completed", ["indexing"]);
   }
 
@@ -110,6 +114,7 @@ export class RelayedRefundExecutionService {
 
   private async statusLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "indexing") return this.finishIndexing(operationId, plan);
     if (operation.stage === "completed" || operation.stage === "cancelled" || operation.stage === "expired" || operation.stage === "failed") return operation;
@@ -122,6 +127,7 @@ export class RelayedRefundExecutionService {
 
   private async executeLocked(operationId: string): Promise<OperationRecord> {
     let operation = await this.operations.get(operationId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(operationId, "relayed-refund", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(operationId);
@@ -145,14 +151,19 @@ export class RelayedRefundExecutionService {
     }
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt refund data");
-    const { content, rawSecret } = await decryptRefund(this.client, operation.chainId, plan.leafIndex, password);
+    const { content, deposition, rawSecret } = await decryptRefund(this.client, operation.chainId, plan.leafIndex, password);
     const token = normalizeAddress(content.token, selected.config.family);
+    const signer = normalizeAddress(this.client.signer.address(selected.config.family), selected.config.family);
     const totalAllocated = content.refundEntries.reduce((sum, entry) => sum + BigInt(entry.amount), 0n);
     if (
       token !== plan.token
       || content.tier !== plan.tier
       || content.depositLeaf !== plan.depositLeaf
       || totalAllocated.toString() !== plan.totalAllocated
+      || deposition.org_id !== plan.orgId
+      || deposition.batch_id !== plan.batchId
+      || normalizeAddress(deposition.address, selected.config.family) !== plan.refunder
+      || signer !== plan.refunder
     ) throw new Error("Encrypted refund data no longer matches the prepared relayed refund");
     const state = await refundState(new Web3Service(selected.config, selected.runtime), content);
     if (state.refundAmount.toString() !== plan.refundAmount) {

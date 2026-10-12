@@ -16,7 +16,8 @@ function planFrom(operation: OperationRecord): WithdrawPlan {
   if (operation.kind !== "withdraw") throw new Error(`Operation ${operation.id} is not a withdrawal`);
   const plan = operation.plan as Partial<WithdrawPlan>;
   if (
-    !Number.isSafeInteger(plan.allocationId)
+    typeof plan.allocationId !== "string" || !plan.allocationId
+    || (plan.source !== "payroll" && plan.source !== "defi")
     || !Number.isSafeInteger(plan.leafIndex)
     || typeof plan.token !== "string"
     || typeof plan.expectedAmount !== "string"
@@ -35,7 +36,7 @@ export class WithdrawExecutionService {
     private readonly lease = new OperationLease(operations.directory),
   ) {}
 
-  private async submitAndConfirm(operationId: string, transaction: StoredSignedTransaction, gateway: DepositChainGateway) {
+  private async submitAndConfirm(operationId: string, plan: WithdrawPlan, transaction: StoredSignedTransaction, gateway: DepositChainGateway) {
     let operation = await this.operations.get(operationId);
     let tracked = operation.transactions.find((entry) => entry.hash.toLowerCase() === transaction.hash.toLowerCase());
     if (!tracked) {
@@ -57,9 +58,13 @@ export class WithdrawExecutionService {
       });
       const current = await this.operations.get(operationId);
       if (current.stage === "pending" || current.stage === "broadcasting") {
-        return this.operations.transition(operationId, "completed", [current.stage]);
+        operation = await this.operations.transition(operationId, "indexing", [current.stage]);
+      } else operation = current;
+      if (plan.source === "payroll") {
+        await this.client.backend.confirmPrivacyWithdraw(plan.allocationId, transaction.hash);
       }
-      return current;
+      if (operation.stage === "indexing") return this.operations.transition(operationId, "completed", ["indexing"]);
+      return operation;
     } catch (error) {
       if (error instanceof ChainTransactionFailedError) {
         await this.operations.recordTransactionStatus(operationId, transaction.hash, { state: "failed", error: error.message });
@@ -82,23 +87,24 @@ export class WithdrawExecutionService {
     const selected = await this.client.chain(operation.chainId);
     const gateway = new DepositChainGateway(selected.config, selected.runtime, this.client.signer.privateKey);
     const stored = (await this.payloads.get(operationId)).transaction;
-    if (stored) return this.submitAndConfirm(operationId, stored, gateway);
+    if (stored) return this.submitAndConfirm(operationId, plan, stored, gateway);
     if (operation.transactions.length > 0) {
       throw new Error("Withdrawal has a registered transaction but its signed payload is unavailable; refusing replacement");
     }
     if (operation.stage !== "proving") throw new Error(`Withdrawal cannot generate a proof from stage ${operation.stage}`);
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");
-    const { info, rawSecret } = await decryptAllocation(this.client, operation.chainId, plan.allocationId, password);
+    const { info, rawSecret, source } = await decryptAllocation(this.client, operation.chainId, plan.allocationId, password);
     const token = normalizeAddress(info.token, selected.config.family);
     if (
       info.leafIndex !== plan.leafIndex
       || info.tier !== plan.tier
       || info.amount !== plan.allocationAmount
+      || source !== plan.source
       || token !== plan.token
     ) throw new Error("Encrypted allocation no longer matches the prepared withdrawal");
     const localAddress = normalizeAddress(this.client.signer.address(selected.config.family), selected.config.family);
-    if (localAddress !== plan.recipient || localAddress !== plan.relayer) throw new Error("Prepared withdrawal is for a different local signer");
+    if (localAddress !== plan.relayer) throw new Error("Prepared withdrawal fee recipient is a different local signer");
     const nullifierHashValue = await poseidonHash([BigInt(info.nullifier)]);
     const state = await new Web3Service(selected.config, selected.runtime).claimedState(
       `0x${nullifierHashValue.toString(16).padStart(64, "0")}`,
@@ -134,6 +140,6 @@ export class WithdrawExecutionService {
     });
     await this.payloads.saveTransaction(operationId, transaction);
     await this.operations.registerTransaction(operationId, "withdraw", transaction.hash);
-    return this.submitAndConfirm(operationId, transaction, gateway);
+    return this.submitAndConfirm(operationId, plan, transaction, gateway);
   }
 }

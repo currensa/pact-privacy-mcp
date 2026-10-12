@@ -32,11 +32,15 @@ function chainOption(command: Command): Command {
 }
 
 export function registerWorkflowCommands(program: Command, executor: CliExecutor): void {
+  program.command("relayer").description("Inspect a relayer")
+    .command("status").description("Read relayer availability and fee estimates")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayer.status"));
+
   const account = program.command("account").description("Manage local Pact Privacy accounts");
   account.command("add")
     .description("Generate or import and register another account")
     .option("--backend <url>", "backend URL; defaults to the shared setting")
-    .option("--family <family>", "evm, tron, or both")
     .action(invoke(executor, "account.add"));
   account.command("list")
     .description("List local accounts without credentials")
@@ -54,10 +58,9 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .argument("<address>")
     .option("--confirm", "confirm removal")
     .action(invoke(executor, "account.remove", ["address"]));
-  account.command("migrate")
-    .description("Explicitly migrate a legacy environment and its operations")
-    .option("--env <path>", "legacy environment file", ".env")
-    .action(invoke(executor, "account.migrate"));
+  program.command("organization").description("Inspect Organization memberships")
+    .command("list").description("List organizations for the selected account")
+    .action(invoke(executor, "organization.list"));
 
   const chain = program.command("chain").description("Inspect supported chains");
   chain.command("list")
@@ -76,8 +79,8 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
 
   const receiver = program.command("receiver").description("Inspect registered receivers");
   receiver.command("list")
-    .description("List registered receivers")
-    .option("--family <family>", "evm or tron")
+    .description("List active receivers in an organization")
+    .requiredOption("--org <org-id>", "organization ID")
     .option("--address <address>", "receiver address")
     .action(invoke(executor, "receiver.list"));
 
@@ -113,6 +116,7 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .option("--leaf-index <index>", "filter by deposit leaf index")
     .action(invoke(executor, "deposit.list"));
   chainOption(deposit.command("prepare").description("Prepare a private deposit"))
+    .requiredOption("--org <org-id>", "organization ID")
     .requiredOption("--token <token>", "token symbol or address")
     .option("--receiver <address:amount>", "receiver and decimal amount; repeatable", collect, [])
     .option("--receivers <csv-path>", "CSV containing address,amount rows")
@@ -147,6 +151,7 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .requiredOption("--allocation <id>", "allocation ID")
     .option("--amount <amount>", "decimal amount")
     .option("--all", "withdraw all remaining funds")
+    .option("--recipient <address>", "public recipient of the net withdrawal; defaults to the local signer")
     .action(invoke(executor, "withdraw.prepare"));
   withdraw.command("execute")
     .description("Execute a prepared private withdrawal")
@@ -174,6 +179,9 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .action(invoke(executor, "relayed-withdraw.status", ["operationId"]));
 
   const refund = program.command("refund").description("Manage private refunds");
+  chainOption(refund.command("list").description("List refundable deposits and their current amounts"))
+    .option("--leaf-index <index>", "filter by deposit leaf index")
+    .action(invoke(executor, "refund.list"));
   chainOption(refund.command("prepare").description("Prepare a private refund"))
     .requiredOption("--leaf-index <index>", "deposit leaf index")
     .action(invoke(executor, "refund.prepare"));
@@ -200,23 +208,67 @@ export function registerWorkflowCommands(program: Command, executor: CliExecutor
     .argument("<operation-id>")
     .action(invoke(executor, "relayed-refund.status", ["operationId"]));
 
-  const defi = program.command("defi").description("Manage EVM-only private DeFi withdrawals");
-  chainOption(defi.command("prepare").description("Prepare an EVM DeFi withdrawal"))
+  const defi = program.command("defi").description("Route a private allocation through a configured DeFi protocol");
+  chainOption(defi.command("quote").description("Estimate DeFi output without preparing an operation"))
+    .requiredOption("--input-token <token>", "configured input token")
+    .requiredOption("--amount <amount>", "input-token amount routed through DeFi")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .action(invoke(executor, "defi.quote"));
+  chainOption(defi.command("prepare").description("Prepare a direct private DeFi operation"))
     .requiredOption("--allocation <id>", "allocation ID")
-    .requiredOption("--amount <amount>", "decimal input amount")
-    .requiredOption("--protocol <protocol>", "configured DeFi protocol")
-    .requiredOption("--output-token <token>", "output token symbol or address")
-    .requiredOption("--min-output <amount>", "minimum decimal output amount")
+    .option("--amount <amount>", "input-token amount routed through DeFi")
+    .option("--all", "use the remaining allocation; mutually exclusive with --amount")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .requiredOption("--min-output <amount>", "minimum acceptable output-token amount")
     .option("--to <address>", "public output recipient")
-    .option("--receiver <address:amount>", "private redeposit receiver; repeatable", collect, [])
-    .option("--private-redeposit", "privately redeposit the output")
-    .option("--refund", "include refund support for the private redeposit")
+    .option("--receiver <address:amount>", "private re-deposit receiver; repeatable", collect, [])
+    .option("--receivers <csv-path>", "private re-deposit CSV containing address,amount rows")
+    .option("--private-redeposit", "privately re-deposit output; unavailable on TRON")
+    .option("--excess-recipient <address>", "recipient of variable output above the private re-deposit total")
+    .option("--refund", "add refund support to the private re-deposit")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
     .action(invoke(executor, "defi.prepare"));
-  defi.command("execute")
-    .description("Execute a prepared EVM DeFi withdrawal")
-    .argument("<operation-id>")
-    .option("--confirm", "confirm execution")
+  defi.command("execute").description("Execute a prepared direct DeFi operation")
+    .argument("<operation-id>").option("--confirm", "confirm execution")
     .action(invoke(executor, "defi.execute", ["operationId"]));
+
+  const relayedDefi = program.command("relayed-defi").description("Manage relayer-submitted private DeFi operations");
+  chainOption(relayedDefi.command("quote").description("Estimate relayer fees and DeFi output without preparing an operation"))
+    .requiredOption("--tier <tier>", "withdrawal circuit tier")
+    .option("--redeposit-tier <tier>", "private re-deposit circuit tier; omit for public output")
+    .requiredOption("--input-token <token>", "configured input token")
+    .requiredOption("--withdraw-amount <amount>", "gross amount including the relayer fee")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-defi.quote"));
+  chainOption(relayedDefi.command("prepare").description("Prepare a relayed private DeFi operation"))
+    .requiredOption("--allocation <id>", "allocation ID")
+    .option("--withdraw-amount <amount>", "gross allocation amount including the relayer fee")
+    .option("--withdraw-all", "use the full remaining allocation including the relayer fee")
+    .requiredOption("--protocol <protocol>", "configured protocol name, type, or address")
+    .requiredOption("--output-token <token>", "configured output token")
+    .requiredOption("--min-output <amount>", "minimum acceptable output-token amount")
+    .option("--to <address>", "public output recipient")
+    .option("--receiver <address:amount>", "private re-deposit receiver; repeatable", collect, [])
+    .option("--receivers <csv-path>", "private re-deposit CSV containing address,amount rows")
+    .option("--private-redeposit", "privately re-deposit output; unavailable on TRON")
+    .option("--excess-recipient <address>", "recipient of variable output above the private re-deposit total")
+    .option("--refund", "add refund support to the private re-deposit")
+    .option("--slippage-bps <bps>", "quote slippage in basis points", "50")
+    .option("--max-fee <amount>", "maximum accepted relayer fee")
+    .requiredOption("--relayer <url>", "relayer HTTP base URL")
+    .action(invoke(executor, "relayed-defi.prepare"));
+  relayedDefi.command("execute").description("Execute a prepared relayed DeFi operation")
+    .argument("<operation-id>").option("--confirm", "confirm execution")
+    .action(invoke(executor, "relayed-defi.execute", ["operationId"]));
+  relayedDefi.command("status").description("Refresh and show a relayed DeFi operation")
+    .argument("<operation-id>").action(invoke(executor, "relayed-defi.status", ["operationId"]));
 
   const operation = program.command("operation").description("Inspect and recover durable operations");
   operation.command("status")

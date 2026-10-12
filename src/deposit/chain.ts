@@ -70,6 +70,30 @@ export class DepositChainGateway {
     return await this.runtime.tronWeb.trx.signTransaction(extended, this.privateKey.slice(2)) as unknown as Record<string, unknown>;
   }
 
+  private async signTronCalldata(contract: string, calldata: string): Promise<StoredSignedTransaction["raw"]> {
+    if (this.runtime.family !== "tron") throw new Error("Not a TRON runtime");
+    const owner = this.runtime.tronWeb.defaultAddress.base58;
+    if (!owner) throw new Error("TRON signer address is unavailable");
+    const options = { input: calldata.replace(/^0x/, ""), callValue: 0, feeLimit: TRON_MAX_FEE_LIMIT };
+    let feeLimit = TRON_FALLBACK_FEE_LIMIT;
+    try {
+      const [estimate, parameters] = await Promise.all([
+        this.runtime.tronWeb.transactionBuilder.estimateEnergy(contract, "", options, [], owner) as Promise<{ energy_required?: number }>,
+        this.runtime.tronWeb.trx.getChainParameters(),
+      ]);
+      const price = parameters.find((item) => item.key === "getEnergyFee")?.value ?? 100;
+      if (Number.isSafeInteger(estimate.energy_required)) {
+        feeLimit = Math.min(TRON_MAX_FEE_LIMIT, Math.max(TRON_MIN_FEE_LIMIT, Math.ceil(estimate.energy_required! * price * 1.2)));
+      }
+    } catch { /* bounded fallback */ }
+    const built = await this.runtime.tronWeb.transactionBuilder.triggerSmartContract(
+      contract, "", { input: options.input, callValue: 0, feeLimit }, [], owner,
+    );
+    if (!built.result?.result) throw tronError(built.result?.message, "Could not build TRON transaction");
+    const extended = await this.runtime.tronWeb.transactionBuilder.extendExpiration(built.transaction, 5 * 60);
+    return await this.runtime.tronWeb.trx.signTransaction(extended, this.privateKey.slice(2)) as unknown as Record<string, unknown>;
+  }
+
   async signApproval(token: string, amount: bigint): Promise<StoredSignedTransaction> {
     if (this.runtime.family === "evm") {
       const data = new Interface(FUNGIBLE_TOKEN_ABI).encodeFunctionData("approve", [this.chain.gravArc, amount]);
@@ -212,6 +236,17 @@ export class DepositChainGateway {
     );
     const hash = String((raw as Record<string, unknown>).txID ?? "");
     return { purpose: "refund", family: "tron", hash, raw };
+  }
+
+  async signDefi(target: string, calldata: string): Promise<StoredSignedTransaction> {
+    if (this.runtime.family === "evm") {
+      const request = await this.runtime.wallet.populateTransaction({ to: target, data: calldata, gasLimit: 5_000_000n });
+      const raw = await this.runtime.wallet.signTransaction(request);
+      return { purpose: "defi", family: "evm", hash: keccak256(raw), raw };
+    }
+    const raw = await this.signTronCalldata(tronBase58FromCanonical(target), calldata);
+    const hash = String((raw as Record<string, unknown>).txID ?? "");
+    return { purpose: "defi", family: "tron", hash, raw };
   }
 
   async broadcast(transaction: StoredSignedTransaction): Promise<void> {

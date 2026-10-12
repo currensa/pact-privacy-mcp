@@ -5,9 +5,13 @@ import { resolve } from "node:path";
 import { test } from "node:test";
 import { Interface } from "ethers";
 import { GRAVARC_REFUND_ABI } from "../src/deposit/abi.js";
-import { encodeRelayedRefundCalldata } from "../src/relayed-refund/execute.js";
+import { encodeRelayedRefundCalldata, RelayedRefundExecutionService } from "../src/relayed-refund/execute.js";
 import { RelayedRefundPayloadStore } from "../src/relayed-refund/payload-store.js";
 import { RelayerClient } from "../src/relayer/client.js";
+import { OperationService } from "../src/operations/service.js";
+import { OperationStore } from "../src/operations/store.js";
+import { OperationLease } from "../src/operations/lease.js";
+import type { PactPrivacyClient } from "../src/runtime/client.js";
 
 test("encodes public relayed refund calldata with the quoted binding", () => {
   const calldata = encodeRelayedRefundCalldata({
@@ -64,4 +68,50 @@ test("uses the relayer refund quote and submission endpoints", async () => {
   assert.equal(quote.operation, "refund");
   await client.submitRefund({ chainId: 1, quoteId: quote.id, calldata: "0x1234" });
   assert.deepEqual(requests, ["http://localhost:9000/v1/refund/quote", "http://localhost:9000/v1/refund"]);
+});
+
+test("retries Organization refund confirmation without resubmitting a confirmed refund", async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), "pact-relayed-refund-confirm-"));
+  const operations = new OperationService(new OperationStore(directory));
+  const plan = {
+    orgId: "org_1", batchId: "batch_1", leafIndex: 1,
+    token: "0x0000000000000000000000000000000000000000", depositLeaf: "1",
+    totalAllocated: "100", refundAmount: "100", fee: "1",
+    refunder: "0x1111111111111111111111111111111111111111",
+    relayer: "0x2222222222222222222222222222222222222222",
+    relayerUrl: "http://localhost:9000", quoteId: "quote", quoteExpiresAt: "2030-01-01T00:00:00.000Z",
+  };
+  let operation = await operations.prepare("relayed-refund", 10143, plan);
+  operation = await operations.beginExecution(operation.id, "relayed-refund", operation.planHash);
+  const payloads = new RelayedRefundPayloadStore(directory);
+  await payloads.saveCalldata(operation.id, "0x1234");
+  await payloads.saveRelayerOperation(operation.id, "123e4567-e89b-12d3-a456-426614174000");
+  let accountChecks = 0;
+  let confirmations = 0;
+  const client = {
+    assertAccount: async () => { accountChecks += 1; return {}; },
+    backend: { confirmPrivacyRefund: async () => {
+      confirmations += 1;
+      if (confirmations === 1) throw new Error("temporary Organization failure");
+      return { status: "refunded", txHash: `0x${"bb".repeat(32)}` };
+    } },
+  } as unknown as PactPrivacyClient;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    id: "123e4567-e89b-12d3-a456-426614174000", operation: "refund", chainId: 10143,
+    state: "confirmed", transactionHash: `0x${"bb".repeat(32)}`, blockNumber: 11,
+    error: null, createdAt: "", updatedAt: "", submittedAt: "", confirmedAt: "",
+  });
+  const service = new RelayedRefundExecutionService(
+    client, operations, payloads, new OperationLease(directory),
+  );
+  try {
+    await assert.rejects(() => service.status(operation.id), /temporary Organization failure/);
+    assert.equal((await operations.get(operation.id)).stage, "indexing");
+    assert.equal((await service.status(operation.id)).stage, "completed");
+    assert.equal(confirmations, 2);
+    assert.equal(accountChecks, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

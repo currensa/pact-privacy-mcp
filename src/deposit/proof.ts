@@ -136,6 +136,8 @@ export class DepositProofService {
       canRefund,
       totalAmount,
       leafIndex: path.nextIndex,
+      depositPathElements: path.siblings,
+      depositPathIndices: path.siblings.map((_, level) => (path.nextIndex >> level) & 1),
       receivers: input.receivers.map((receiver, index) => ({
         address: receiver.address,
         nullifier: hex32(nullifiers[index]!),
