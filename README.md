@@ -11,7 +11,7 @@ Use Node.js 20 or newer. Start the Organization server, then run:
 
 ```bash
 npm install
-npm run cli -- account add --backend http://localhost:3000/api
+npm run cli -- account add --backend https://test.pactpay.app/api
 npm run cli -- status
 npm run cli -- organization list
 npm run cli -- chain list
