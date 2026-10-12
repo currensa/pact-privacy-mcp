@@ -48,12 +48,145 @@ transaction are reused; do not create a replacement operation. Check
 returned only when created or rotated. To invalidate one, revoke it in the
 Organization account settings; a revoked key cannot access the MCP.
 
-## MCP and local files
+## Install the MCP server
 
-Build and test with `npm run typecheck` and `npm test`. Point an MCP client at
-`dist/src/index.js` after building. The CLI and MCP use the same selected local
-account. The MCP exposes `list_organizations` and requires an explicit `orgId`
-for payroll recipient discovery and deposit preparation.
+Complete the local setup above first so the MCP has an onboarded account to
+use. Then build the stdio server:
+
+```bash
+npm install
+npm run build
+npm run typecheck
+```
+
+The MCP entry point is `dist/src/index.js`. MCP clients often start outside the
+project directory, so use an absolute path to that file in client
+configuration. You can print it from the project root with:
+
+```bash
+node -e 'console.log(require("node:path").resolve("dist/src/index.js"))'
+```
+
+The examples below use `/absolute/path/to/pact-privacy-mcp`; replace it with
+the path printed on your machine. If a GUI client cannot find `node`, replace
+`node` with the absolute path printed by `command -v node` on macOS or Linux,
+or `where node` on Windows.
+
+### Codex CLI, desktop app, or IDE extension
+
+Codex clients share MCP configuration. Register the local stdio server from a
+terminal:
+
+```bash
+codex mcp add pact-privacy -- node /absolute/path/to/pact-privacy-mcp/dist/src/index.js
+codex mcp list
+```
+
+Alternatively, add it directly to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.pact-privacy]
+command = "node"
+args = ["/absolute/path/to/pact-privacy-mcp/dist/src/index.js"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+```
+
+Restart the Codex client after changing the configuration. In the CLI or
+desktop app, use `/mcp` to confirm that `pact-privacy` is connected. See the
+[official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp)
+for additional configuration and approval options.
+
+### Claude Desktop
+
+Add the server to `claude_desktop_config.json`:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "pact-privacy": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/pact-privacy-mcp/dist/src/index.js"
+      ]
+    }
+  }
+}
+```
+
+Merge the `pact-privacy` entry into an existing `mcpServers` object rather than
+overwriting other servers. Fully quit and reopen Claude Desktop after saving
+the file.
+
+For Claude Code, the equivalent command is:
+
+```bash
+claude mcp add --scope user pact-privacy -- node /absolute/path/to/pact-privacy-mcp/dist/src/index.js
+claude mcp list
+```
+
+Run `/mcp` inside Claude Code to verify the connection.
+
+### Cursor
+
+Create `~/.cursor/mcp.json` for a user-wide installation, or
+`.cursor/mcp.json` in a project for a project-only installation:
+
+```json
+{
+  "mcpServers": {
+    "pact-privacy": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/pact-privacy-mcp/dist/src/index.js"
+      ]
+    }
+  }
+}
+```
+
+Restart Cursor, open its MCP settings, and confirm that the server and its
+tools are enabled.
+
+### Accounts and verification
+
+The CLI and MCP use the same selected local account. Check or change it before
+starting the MCP client:
+
+```bash
+npm run cli -- account list
+npm run cli -- account use <address>
+npm run cli -- status
+```
+
+By default, the MCP exposes only that selected account. To allow several local
+profiles, add a comma-separated `PACT_PRIVACY_MCP_ACCOUNTS` value to the MCP
+server's `env` configuration. The selected default account must be included:
+
+```json
+"env": {
+  "PACT_PRIVACY_MCP_ACCOUNTS": "0xFirstAccount,0xSecondAccount"
+}
+```
+
+After connecting, ask the client to call `echo`, `list_accounts`, or
+`list_chains`. If the server does not appear, check that:
+
+1. `npm run build` completed and `dist/src/index.js` exists.
+2. The configured server and Node.js paths are absolute and readable.
+3. At least one account has completed `account add` and `status` succeeds.
+4. The MCP client was fully restarted after its configuration changed.
+
+Rebuild and restart the client after pulling source changes. You can also run
+the repository's stdio smoke test and full test suite with `npm test`.
+
+The MCP exposes `list_organizations` and requires an explicit `orgId` for
+payroll recipient discovery and deposit preparation.
+
+## Local files and security
 
 Profiles (including wallet private keys, passwords, and API keys) are stored in
 `~/.config/pact-privacy/org/`; operation records are under
