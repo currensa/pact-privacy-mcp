@@ -16,10 +16,10 @@ export class RelayedDefiPreparationService {
     maximumFee?: string;
     relayerUrl: string;
   }) {
-    await this.client.assertRelayedSupported(input.chainId);
     if (input.withdrawAll === (input.withdrawalAmount !== undefined)) {
       throw new Error("Choose exactly one of --withdraw-amount or --withdraw-all");
     }
+    await this.client.assertAccount(input.chainId);
     const { withdrawalAmount, withdrawAll, maximumFee: maximumFeeInput, relayerUrl, ...defiInput } = input;
     const resolved = await resolveDefiAllocation(this.client, defiInput);
     const selected = await this.client.chain(input.chainId);

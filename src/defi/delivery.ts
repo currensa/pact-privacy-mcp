@@ -14,6 +14,7 @@ export async function deliverRedeposit(client: PactPrivacyClient, operations: Op
   while (true) {
     try {
       const result = await client.backend.confirmDefiDeposit({
+        submission: operation.kind === "relayed-defi" ? "relayed" : "direct",
         caipChainId: `eip155:${operation.chainId}`, txHash, leafIndex, depositLeaf: value.depositLeaf,
         withdrawMessages: value.messages,
       });

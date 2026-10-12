@@ -86,7 +86,7 @@ test("Organization receipt confirmation uses batch, item, and DeFi routes", asyn
   });
   await backend.confirmPrivacyWithdraw("item_1", txHash);
   await backend.confirmPrivacyRefund("org_1", "batch_1", txHash);
-  await backend.confirmDefiDeposit({ caipChainId: "eip155:10143", txHash,
+  await backend.confirmDefiDeposit({ submission: "relayed", caipChainId: "eip155:10143", txHash,
     leafIndex: 3, depositLeaf: "123", withdrawMessages: [] });
   assert.deepEqual(requests.map(({ path }) => path), [
     "/api/transaction/org_1/batches/batch_1/confirm-deposit",

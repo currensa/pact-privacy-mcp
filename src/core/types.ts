@@ -13,7 +13,7 @@ export type ChainSummary = {
 };
 
 export type ChainDetails = ChainSummary & {
-  capabilities?: { deposit: boolean; withdraw: boolean; refund: boolean; defi: boolean; relayed: boolean };
+  capabilities?: { deposit: boolean; withdraw: boolean; refund: boolean; defi: boolean };
   gravArc: CanonicalAddress;
   erc20Tokens: { symbol: string; name: string; address: CanonicalAddress }[];
   pureRouter?: CanonicalAddress;

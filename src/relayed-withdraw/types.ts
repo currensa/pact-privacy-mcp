@@ -3,6 +3,7 @@ import type { CircuitTier } from "../proof/artifact-cache.js";
 
 export type RelayedWithdrawPlan = {
   allocationId: string;
+  source: "payroll" | "defi";
   leafIndex: number;
   token: CanonicalAddress;
   tokenSymbol: string;

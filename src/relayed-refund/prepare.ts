@@ -17,10 +17,9 @@ export class RelayedRefundPreparationService {
     maximumFee?: string;
     relayerUrl: string;
   }) {
-    await this.client.assertRelayedSupported(input.chainId);
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt refund data");
-    const { config, runtime } = await this.client.chain(input.chainId);
+    const { config, runtime } = await this.client.assertAccount(input.chainId);
     const { content, deposition } = await decryptRefund(this.client, input.chainId, input.leafIndex, password);
     if (!deposition.org_id || !deposition.batch_id) throw new Error("Organization refund identity is unavailable");
     const tier = asCircuitTier(content.tier);
@@ -38,7 +37,8 @@ export class RelayedRefundPreparationService {
       throw new Error("Maximum relayer fee must be positive and less than the refund amount");
     }
     const refunder = normalizeAddress(input.refunder, config.family);
-    if (refunder !== normalizeAddress(this.client.signer.address(config.family), config.family)) {
+    if (refunder !== normalizeAddress(this.client.signer.address(config.family), config.family)
+      || refunder !== normalizeAddress(deposition.address, config.family)) {
       throw new Error("Only the depositor wallet can receive this refund");
     }
     await this.client.proofs.prepare("refund", tier);

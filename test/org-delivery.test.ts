@@ -56,8 +56,10 @@ test("Organization DeFi delivery verifies the leaf and resumes from indexing", a
   let stage: OperationRecord["stage"] = "indexing";
   let calls = 0;
   let fail = true;
-  const client = { backend: { confirmDefiDeposit: async () => {
+  const submissions: string[] = [];
+  const client = { backend: { confirmDefiDeposit: async (input: { submission: string }) => {
     calls += 1;
+    submissions.push(input.submission);
     if (fail) throw new BackendError(403, "Delivery rejected");
     return { success: true };
   } } } as unknown as PactPrivacyClient;
@@ -66,7 +68,7 @@ test("Organization DeFi delivery verifies the leaf and resumes from indexing", a
       stage = next;
       return { stage };
     } } as unknown as OperationService;
-  const operation = { id: "op_defi", chainId: 10143 } as OperationRecord;
+  const operation = { id: "op_defi", chainId: 10143, kind: "relayed-defi" } as OperationRecord;
   const delivery: DepositDelivery = { predictedLeafIndex: 7, depositLeaf: "123",
     deposition: { encContent: null, canRefund: 0, depositInfo: "" }, messages: [] };
   const txHash = `0x${"22".repeat(32)}`;
@@ -78,6 +80,7 @@ test("Organization DeFi delivery verifies the leaf and resumes from indexing", a
   await deliverRedeposit(client, operations, operation, delivery, 7, txHash);
   assert.equal(stage, "completed");
   assert.equal(calls, 2);
+  assert.deepEqual(submissions, ["relayed", "relayed"]);
 });
 
 test("Organization deposit ciphertext contains receiver claim data and refundable status slots", async () => {

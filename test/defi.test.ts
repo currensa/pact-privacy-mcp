@@ -2,9 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AbiCoder, Interface, getAddress, keccak256 } from "ethers";
 import { buildSwapCalls } from "../src/defi/adapter.js";
+import { buildDefiPlan } from "../src/defi/prepare.js";
 import type { DefiProtocolSnapshot, DefiQuote } from "../src/defi/types.js";
 import { computeDefiCommitment } from "../src/defi/commitment.js";
 import { RelayerClient } from "../src/relayer/client.js";
+import type { PactPrivacyClient } from "../src/runtime/client.js";
+
+test("rejects refund support for Organization DeFi re-deposits before reading chain state", async () => {
+  await assert.rejects(
+    () => buildDefiPlan({} as PactPrivacyClient, { refund: true } as never),
+    /Organization DeFi re-deposits are non-refundable/,
+  );
+});
 
 test("computes the DeFi call commitment used as the withdrawal recipient", () => {
   const call = {

@@ -32,7 +32,7 @@ type OrganizationNetwork = {
   contracts: { gravArc: string; pureRouter: string; defiRouter: string };
   tokens: ChainDetails["erc20Tokens"];
   protocols: ChainDetails["defiProtocols"];
-  capabilities: { deposit: boolean; withdraw: boolean; refund: boolean; defi: boolean; relayed: boolean };
+  capabilities: { deposit: boolean; withdraw: boolean; refund: boolean; defi: boolean };
 };
 
 export class PactPrivacyBackend {
@@ -96,8 +96,7 @@ export class PactPrivacyBackend {
     for (const row of evm) {
       if (row.caipChainId !== `eip155:${row.chainId}`
         || !Array.isArray(row.rpcUrls) || !row.rpcUrls[0] || !row.nativeCurrency
-        || !row.contracts?.gravArc || !Array.isArray(row.tokens) || !Array.isArray(row.protocols)
-        || typeof row.capabilities?.relayed !== "boolean") {
+        || !row.contracts?.gravArc || !Array.isArray(row.tokens) || !Array.isArray(row.protocols)) {
         throw new Error("Organization network response is invalid");
       }
     }
@@ -347,43 +346,6 @@ export class PactPrivacyBackend {
       pathIndices: row.pathIndices, leafCount: row.leafCount };
   }
 
-  saveDeposition(input: {
-    leafIndex: number;
-    chainId: number;
-    blockNumber: number;
-    encContent: string | null;
-    canRefund: 0 | 1;
-    isRefunded: false;
-    depositInfo: string;
-  }): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("/depositions", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  }
-
-  saveMessage(input: {
-    address: string;
-    content: string;
-    chainId: number;
-    leafIndex: number;
-    secretHash: string;
-    encPubkey: string;
-    clientMessageId: string;
-  }): Promise<{ ok: true; id: number }> {
-    return this.request<{ ok: true; id: number }>("/messages", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  }
-
-  markDepositionRefunded(chainId: number, leafIndex: number): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>("/depositions/refund", {
-      method: "PATCH",
-      body: JSON.stringify({ chainId, leafIndex, isRefunded: true }),
-    });
-  }
-
   confirmPrivacyRefund(orgId: string, batchId: string, txHash: string): Promise<{ status: string; txHash: string }> {
     return this.request(`/transaction/${encodeURIComponent(orgId)}/batches/${encodeURIComponent(batchId)}/confirm-refund-gravarc`, {
       method: "POST", body: JSON.stringify({ depositTxHash: txHash }),
@@ -391,6 +353,7 @@ export class PactPrivacyBackend {
   }
 
   confirmDefiDeposit(input: {
+    submission: "direct" | "relayed";
     caipChainId: string; txHash: string; leafIndex: number; depositLeaf: string;
     withdrawMessages: Array<{ address: string; content: string; secretHash: string; encPubkey: string; clientMessageId: string }>;
   }): Promise<{ success: boolean }> {

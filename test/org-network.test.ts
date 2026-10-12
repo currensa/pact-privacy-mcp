@@ -19,7 +19,7 @@ const network = {
   },
   tokens: [{ symbol: "MCK", name: "Mock", address: "0x0000000000000000000000000000000000000004", decimals: 18, isStable: false }],
   protocols: [{ name: "Kuru", address: "0x0000000000000000000000000000000000000005", outputBehavior: "variable" }],
-  capabilities: { deposit: true, withdraw: true, refund: true, defi: true, relayed: false },
+  capabilities: { deposit: true, withdraw: true, refund: true, defi: true },
 };
 
 test("Organization network catalog supplies MCP chains and contract details", async () => {
@@ -38,7 +38,6 @@ test("Organization network catalog supplies MCP chains and contract details", as
   assert.deepEqual(calls, ["https://org.example/api/chain-asset/networks", "https://org.example/api/chain-asset/networks"]);
   await assert.rejects(() => backend.chain(11155111), /Unsupported chain/);
 });
-
 test("Organization network mapping rejects mismatched CAIP identity", async () => {
   const backend = new PactPrivacyBackend("https://org.example", undefined, async () => Response.json([
     { ...network, caipChainId: "eip155:11155111" },
@@ -135,13 +134,21 @@ test("Organization recipients are limited to active members with current privacy
   await assert.rejects(() => backend.users("evm", ""), /Organization ID is required/);
 });
 
-test("Organization relayed execution fails closed when the network disables it", async () => {
+test("Organization account authorization is revalidated at each workflow entry", async () => {
   const client = new PactPrivacyClient({
     privateKey: `0x${"11".repeat(32)}`, backendUrl: "https://org.example", apiKey: "test-key",
   });
-  client.backend.chain = async () => ({ capabilities: network.capabilities }) as Awaited<ReturnType<typeof client.backend.chain>>;
+  let checks = 0;
+  client.chain = async () => ({ config: { family: "evm" } }) as Awaited<ReturnType<typeof client.chain>>;
+  client.backend.assertApiKeyGrant = async () => {
+    checks += 1;
+    return { id: "key_1", name: "MCP", scopes: ["mcp:read", "mcp:write"], grants: [],
+      expiresAt: null, createdAt: 1, lastUsedAt: null, revokedAt: null };
+  };
   try {
-    await assert.rejects(() => client.assertRelayedSupported(10143), /Relayed operations are unavailable/);
+    await client.assertAccount(10143);
+    await client.assertAccount(10143);
+    assert.equal(checks, 2);
   } finally {
     await client.close();
   }

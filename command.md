@@ -1,19 +1,20 @@
 # Pact Privacy CLI examples
 
-> Historical Core-edition examples. This Organization branch uses the server's
-> configured EVM networks, an invite code for `account add`, and an explicit
-> `--org` for recipient and deposit commands. See [README.md](README.md) and
-> `npm run cli -- --help` for the current commands. Relayed execution is disabled.
+> This Organization branch uses the server's configured EVM networks, an invite
+> code for `account add`, and an explicit `--org` for recipient and deposit
+> commands. See [README.md](README.md) and `npm run cli -- --help` for the
+> current commands.
 
 After installing the published package globally, run commands with
 `pactpay <command>`. During development, the equivalent source command is
 `npm run cli -- <command>`.
 
-Examples use Celo Sepolia (`11142220`) and TRON Nile (`3448148188`). Token
-symbols are resolved from the selected chain configuration; an address may be
-used instead when symbols are ambiguous. Commands that need the account
-password read it from the protected profile or standalone `.env`, or prompt
-for it without echoing.
+Some older direct-workflow examples retain Celo and TRON values to illustrate
+the shared chain engine. For Organization use the networks returned by `chain
+list`; the current relayed examples use Ethereum Sepolia and Monad Testnet.
+Token symbols are resolved from the selected chain configuration. Commands that
+need the account password read it from the protected profile or standalone
+`.env`, or prompt for it without echoing.
 Secrets, passwords, private keys, and proof witnesses must never be command-line
 arguments or output.
 
@@ -337,7 +338,7 @@ quoted fee is accepted. Preparation records that fee, the relayer address, and
 the quote expiry:
 
 ```bash
-pactpay relayed-withdraw prepare --chain 11142220 --allocation 735 \
+pactpay relayed-withdraw prepare --chain 11155111 --allocation 735 \
   --amount 250.00 --recipient 0xReceiver... --max-fee 0.25 \
   --relayer http://150.109.25.172:9000
 pactpay relayed-withdraw execute op_01J... --confirm
@@ -395,7 +396,7 @@ estimates; preparation still obtains an exact, short-lived quote. This query
 requires no account credentials and creates no operation.
 
 ```bash
-pactpay relayed-refund prepare --chain 11142220 --leaf-index 42 \
+pactpay relayed-refund prepare --chain 11155111 --leaf-index 42 \
   --refunder 0xDepositor... --max-fee 0.50 \
   --relayer http://150.109.25.172:9000
 pactpay relayed-refund execute op_01J... --confirm
@@ -494,7 +495,7 @@ input. It creates no local operation, proof, or transaction. The returned
 recommended minimum can be reviewed before preparation:
 
 ```bash
-pactpay relayed-defi quote --chain 11142220 --tier 8 \
+pactpay relayed-defi quote --chain 11155111 --tier 8 \
   --input-token USDC --withdraw-amount 100.00 \
   --protocol mock-swap --output-token MCK \
   --relayer http://localhost:9000
@@ -506,7 +507,7 @@ that the refreshed protocol quote cannot satisfy. The fee is paid by
 optional:
 
 ```bash
-pactpay relayed-defi prepare --chain 11142220 --allocation 735 --withdraw-amount 100.00 \
+pactpay relayed-defi prepare --chain 11155111 --allocation 735 --withdraw-amount 100.00 \
   --protocol mock-swap --output-token MCK --min-output 99.00 \
   --to 0xReceiver... --max-fee 0.25 --relayer http://localhost:9000
 pactpay relayed-defi execute op_01J... --confirm
@@ -517,7 +518,8 @@ Relayed DeFi also supports private re-deposit on EVM chains. For a
 variable-output protocol, the receiver amounts define the fixed private
 deposit and `--excess-recipient` receives any additional output. A standalone
 quote uses `--redeposit-tier`; preparation derives the same tier automatically
-from its receiver count:
+from its receiver count. Relayed private re-deposits are non-refundable in this
+stage; preparation rejects `--refund`:
 
 ```bash
 pactpay relayed-defi quote --chain 11155111 --tier 8 --redeposit-tier 8 \

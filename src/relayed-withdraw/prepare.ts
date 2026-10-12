@@ -22,13 +22,12 @@ export class RelayedWithdrawPreparationService {
     maximumFee?: string;
     relayerUrl: string;
   }) {
-    await this.client.assertRelayedSupported(input.chainId);
     if (input.all === (input.amount !== undefined)) throw new Error("Choose exactly one of --amount or --all");
     const password = this.client.environment.password;
     if (!password) throw new Error("PACT_PRIVACY_PASSWORD is required to decrypt the allocation");
-    const { config, runtime } = await this.client.chain(input.chainId);
+    const { config, runtime } = await this.client.assertAccount(input.chainId);
     const web3 = new Web3Service(config, runtime);
-    const { info } = await decryptAllocation(this.client, input.chainId, input.allocationId, password);
+    const { info, source } = await decryptAllocation(this.client, input.chainId, input.allocationId, password);
     if (!TIERS.has(info.tier)) throw new Error(`Unsupported withdrawal tier: ${info.tier}`);
     const token = normalizeAddress(info.token, config.family);
     const native = token === "0x0000000000000000000000000000000000000000";
@@ -64,7 +63,8 @@ export class RelayedWithdrawPreparationService {
     const relayer = normalizeAddress(quote.relayer, config.family);
     const fee = BigInt(quote.fee);
     if (
-      quote.chainId !== input.chainId
+      (quote.operation !== undefined && quote.operation !== "withdraw")
+      || quote.chainId !== input.chainId
       || normalizeAddress(quote.token, config.family) !== token
       || normalizeAddress(quote.gravArc, config.family) !== gravArc
       || quote.amount !== expectedAmount.toString()
@@ -76,6 +76,7 @@ export class RelayedWithdrawPreparationService {
     }
     const plan: RelayedWithdrawPlan = {
       allocationId: input.allocationId,
+      source,
       leafIndex: info.leafIndex,
       token,
       tokenSymbol,

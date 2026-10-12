@@ -44,12 +44,10 @@ export class PactPrivacyClient {
     }
   }
 
-  async assertRelayedSupported(chainId: number): Promise<void> {
-    const chain = await this.backend.chain(chainId);
-    if (chain.capabilities?.relayed !== true) {
-      throw new Error("Relayed operations are unavailable on this Organization chain");
-    }
-    throw new Error("Relayed operations require a separate Organization MCP enablement review");
+  async assertAccount(chainId: number): Promise<{ config: ChainDetails; runtime: ChainRuntime }> {
+    const selected = await this.chain(chainId);
+    await this.backend.assertApiKeyGrant(this.signer, selected.config.family);
+    return selected;
   }
 
   async close(): Promise<void> {

@@ -38,8 +38,8 @@ npm run cli -- deposit execute <operation-id> --confirm
 
 Direct withdraw, refund, and DeFi commands use the same prepare/execute pattern.
 Run `npm run cli -- --help` for their exact options. The selected wallet pays
-direct transaction gas. Relayed execution is disabled for the current
-Organization networks; `relayer status` remains read-only.
+direct transaction gas. Relayed withdraw, refund, and DeFi use the independent
+relayer selected with `--relayer`; proofs and private data remain local.
 
 If a transaction confirms but encrypted server delivery is delayed, rerun its
 `execute <operation-id> --confirm` command. The saved operation and signed

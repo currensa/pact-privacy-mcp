@@ -28,6 +28,22 @@ export class RelayedDefiExecutionService {
   execute(id: string): Promise<OperationRecord> { return this.lease.run(id, () => this.executeLocked(id)); }
   status(id: string): Promise<OperationRecord> { return this.lease.run(id, () => this.statusLocked(id)); }
 
+  private async finishDelivery(id: string, plan: RelayedDefiPlan): Promise<OperationRecord> {
+    const operation = await this.operations.get(id);
+    if (operation.stage !== "indexing" && operation.stage !== "delivering") return operation;
+    if (!plan.privateRedeposit) throw new Error("Public relayed DeFi cannot have pending encrypted delivery");
+    const confirmed = operation.transactions.find((entry) =>
+      entry.state === "confirmed" && entry.purpose === "relayed-defi");
+    if (!confirmed) throw new Error("Confirmed relayed DeFi transaction is unavailable");
+    const payload = await this.payloads.get(id);
+    if (!payload.delivery) throw new Error("Encrypted re-deposit delivery payload is unavailable");
+    await deliverRedeposit(
+      this.client, this.operations, operation, payload.delivery,
+      payload.delivery.predictedLeafIndex, confirmed.hash,
+    );
+    return this.operations.get(id);
+  }
+
   private async track(id: string, remote: RelayerOperation): Promise<OperationRecord> {
     let operation = await this.operations.get(id);
     const plan = planFrom(operation);
@@ -59,15 +75,16 @@ export class RelayedDefiExecutionService {
     if (remote.blockNumber === null) throw new Error("Confirmed relayer operation has no block number");
     operation = await enterIndexing(this.operations, id);
     if (operation.stage !== "completed") {
-      await deliverRedeposit(this.client, this.operations, operation, payload.delivery, payload.delivery.predictedLeafIndex, hash);
+      return this.finishDelivery(id, plan);
     }
     return this.operations.get(id);
   }
 
   private async statusLocked(id: string): Promise<OperationRecord> {
     let operation = await this.operations.get(id);
-    await this.client.assertRelayedSupported(operation.chainId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
+    if (operation.stage === "indexing" || operation.stage === "delivering") return this.finishDelivery(id, plan);
     if (["completed", "cancelled", "expired", "failed"].includes(operation.stage)) return operation;
     const payload = await this.payloads.get(id);
     if (!payload.relayerOperationId) return operation;
@@ -77,11 +94,12 @@ export class RelayedDefiExecutionService {
 
   private async executeLocked(id: string): Promise<OperationRecord> {
     let operation = await this.operations.get(id);
-    await this.client.assertRelayedSupported(operation.chainId);
+    await this.client.assertAccount(operation.chainId);
     const plan = planFrom(operation);
     if (operation.stage === "prepared") operation = await this.operations.beginExecution(id, "relayed-defi", operation.planHash);
     else if (operation.stage === "failed" && operation.resumeStage) operation = await this.operations.retryFailed(id);
     if (operation.stage === "completed") return operation;
+    if (operation.stage === "indexing" || operation.stage === "delivering") return this.finishDelivery(id, plan);
     if (operation.stage === "expired" || operation.stage === "cancelled") throw new Error(`Operation is ${operation.stage}`);
     const payload = await this.payloads.get(id);
     if (payload.relayerOperationId) return this.statusLocked(id);
